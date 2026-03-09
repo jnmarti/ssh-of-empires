@@ -1,0 +1,10 @@
+Port 22
+Port ${game_port}
+
+Match User ${player_username}
+    AuthenticationMethods publickey
+    PasswordAuthentication no
+    PermitTTY yes
+    X11Forwarding no
+    AllowTcpForwarding no
+    ForceCommand ${game_shell_path}

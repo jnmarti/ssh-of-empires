@@ -1,0 +1,6 @@
+#!/bin/bash
+set -eu
+
+cd "${game_dir}"
+export TERM="$${TERM:-xterm-256color}"
+exec python3 "${game_dir}/aoe_terminal.py"
