@@ -37,9 +37,9 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 ## Input Reliability
 
 - In menu screens, prefer `j` and `k` with `Enter` when the menu supports them.
-- In the live match, arrow keys are required for cursor movement.
-- When sending arrow keys programmatically, send the full escape sequence in one write. Do not split `Esc` from the rest of the sequence.
-- Avoid sending bare `Esc` unless you intentionally want to back out or quit. It can close menus, leave rooms, or exit the match.
+- In the live match, use `Ctrl-B`, `Ctrl-F`, `Ctrl-P`, and `Ctrl-N` for left, right, up, and down.
+- Do not use arrow keys in automated sessions.
+- Avoid sending bare `Esc` unless you intentionally want to clear selection or close an in-game panel.
 - Use `Tab` to cycle owned units and buildings and reduce fragile cursor travel.
 
 ## Lobby Commands
@@ -78,6 +78,7 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 
 ## Control Shortlist
 
+- `Ctrl-B` / `Ctrl-F` / `Ctrl-P` / `Ctrl-N`: move left / right / up / down
 - `Space` or `Enter`: select
 - `Tab`: cycle owned units and buildings
 - `a`: context command
@@ -86,4 +87,4 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 - `s`: queue military at a selected `Barracks`
 - `n`: advance age at a selected `Town Center`
 - `t`: research at a selected `Mill` or `Barracks`
-- `x`: clear selection
+- `x` or `Esc`: clear selection

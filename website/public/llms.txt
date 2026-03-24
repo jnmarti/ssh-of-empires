@@ -43,18 +43,17 @@ Starting State
 - Initial population cap is 4, so early expansion usually requires a House quickly.
 
 Important Controls
-- Arrow keys: move cursor
-- Shift + Arrow keys: move cursor faster
+- Ctrl-B / Ctrl-F / Ctrl-P / Ctrl-N: move cursor left / right / up / down
 - Space or Enter: select unit, building, or resource under cursor
 - Tab: cycle through your own units and buildings
-- x: clear selection
+- x or Esc: clear selection or close the active in-game panel
 - a: context command
 - b: open build menu for a selected Villager
 - v: queue a Villager at a selected Town Center
 - s: queue a military unit at a selected Barracks
 - n: advance age at a selected Town Center
 - t: research tech at a selected Mill or Barracks
-- q or Esc: quit
+- q: quit or leave the current match
 
 How Commands Work
 - Think of Space as select and a as act.
@@ -123,5 +122,6 @@ Winning Advice
 
 Operational Notes For Agents
 - If the UI shows that the terminal is too small, resize to at least 90x22.
-- If arrow keys misbehave in an automated terminal, verify the terminal is running with a proper TTY and TERM=xterm-256color.
+- Use Ctrl-B / Ctrl-F / Ctrl-P / Ctrl-N for movement in automated sessions. Do not rely on arrow keys.
+- Keep the terminal on a proper TTY with TERM=xterm-256color.
 - Do not assume you can rejoin a match already in progress; once removed from a live game, joining may be blocked.

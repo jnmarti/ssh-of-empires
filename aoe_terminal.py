@@ -49,8 +49,15 @@ CHAT_MESSAGE_MAX_LEN = 120
 LOBBY_DB_PATH = os.path.join(tempfile.gettempdir(), "ssh_of_empires_lobby.sqlite3")
 MATCH_LEASE_SECONDS = 0.45
 MATCH_MAX_CATCHUP_STEPS = 4
+CURSES_ESCDELAY_MS = 250
+ESCAPE_SEQUENCE_PEEK_MS = 35
 ROOM_NAME_PATTERN = re.compile(r"^[A-Za-z0-9 '\-]{0,24}$")
 PLAYER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9 _'\-]{1,16}$")
+
+CTRL_B = ord("b") & 0x1F
+CTRL_F = ord("f") & 0x1F
+CTRL_N = ord("n") & 0x1F
+CTRL_P = ord("p") & 0x1F
 
 AGE_NAMES = ["Stone Age", "Tool Age", "Bronze Age"]
 
@@ -130,6 +137,74 @@ UNIT_STATS = {
         "age": 2,
     },
 }
+
+ARROW_FINAL_KEYS = {
+    ord("A"): curses.KEY_UP,
+    ord("B"): curses.KEY_DOWN,
+    ord("C"): curses.KEY_RIGHT,
+    ord("D"): curses.KEY_LEFT,
+}
+
+
+def decode_escape_sequence(sequence: List[int]) -> Optional[int]:
+    if len(sequence) < 2:
+        return None
+    prefix = sequence[0]
+    final = sequence[-1]
+    if prefix not in (ord("["), ord("O")) or final not in ARROW_FINAL_KEYS:
+        return None
+    modifier = "".join(chr(item) for item in sequence[1:-1] if 0 <= item < 256)
+    if ";2" in modifier:
+        return {
+            ord("A"): getattr(curses, "KEY_SR", curses.KEY_UP),
+            ord("B"): getattr(curses, "KEY_SF", curses.KEY_DOWN),
+            ord("C"): getattr(curses, "KEY_SRIGHT", curses.KEY_RIGHT),
+            ord("D"): getattr(curses, "KEY_SLEFT", curses.KEY_LEFT),
+        }[final]
+    return ARROW_FINAL_KEYS[final]
+
+
+def normalize_input_key(stdscr: Optional[curses.window], key: int, restore_timeout_ms: int) -> int:
+    if key != 27 or stdscr is None:
+        return key
+    sequence: List[int] = []
+    try:
+        stdscr.timeout(ESCAPE_SEQUENCE_PEEK_MS)
+        for _ in range(5):
+            follow_up = stdscr.getch()
+            if follow_up == -1:
+                break
+            sequence.append(follow_up)
+            if 64 <= follow_up <= 126:
+                break
+    finally:
+        stdscr.timeout(restore_timeout_ms)
+    decoded = decode_escape_sequence(sequence)
+    if decoded is not None:
+        return decoded
+    for follow_up in reversed(sequence):
+        curses.ungetch(follow_up)
+    return key
+
+
+def movement_delta_for_key(key: int) -> Optional[Tuple[int, int]]:
+    if key in (curses.KEY_LEFT, CTRL_B):
+        return (-1, 0)
+    if key in (curses.KEY_DOWN, CTRL_N):
+        return (0, 1)
+    if key in (curses.KEY_UP, CTRL_P):
+        return (0, -1)
+    if key in (curses.KEY_RIGHT, CTRL_F):
+        return (1, 0)
+    if key == getattr(curses, "KEY_SLEFT", -1):
+        return (-FAST_SCROLL, 0)
+    if key == getattr(curses, "KEY_SF", -1):
+        return (0, FAST_SCROLL)
+    if key == getattr(curses, "KEY_SR", -1):
+        return (0, -FAST_SCROLL)
+    if key == getattr(curses, "KEY_SRIGHT", -1):
+        return (FAST_SCROLL, 0)
+    return None
 
 AGE_ADVANCE = {
     0: {"cost": {"food": 220, "wood": 60}, "time": 80},
@@ -407,6 +482,8 @@ class Game:
     def initialize_curses(self) -> None:
         if self.stdscr is None:
             return
+        if hasattr(curses, "set_escdelay"):
+            curses.set_escdelay(CURSES_ESCDELAY_MS)
         self.stdscr.keypad(True)
         if curses.has_colors():
             curses.start_color()
@@ -811,33 +888,21 @@ class Game:
         key = self.stdscr.getch()
         if key == -1:
             return
+        key = normalize_input_key(self.stdscr, key, TICK_MS)
         if self.build_menu_open:
             self.handle_build_menu_input(key)
             return
-        if key in (ord("q"), 27):
+        if key == ord("q"):
             self.running = False
             return
-        if key == curses.KEY_LEFT:
-            self.move_cursor(-1, 0)
-        elif key == curses.KEY_DOWN:
-            self.move_cursor(0, 1)
-        elif key == curses.KEY_UP:
-            self.move_cursor(0, -1)
-        elif key == curses.KEY_RIGHT:
-            self.move_cursor(1, 0)
-        elif key == getattr(curses, "KEY_SLEFT", -1):
-            self.move_cursor(-FAST_SCROLL, 0)
-        elif key == getattr(curses, "KEY_SF", -1):
-            self.move_cursor(0, FAST_SCROLL)
-        elif key == getattr(curses, "KEY_SR", -1):
-            self.move_cursor(0, -FAST_SCROLL)
-        elif key == getattr(curses, "KEY_SRIGHT", -1):
-            self.move_cursor(FAST_SCROLL, 0)
+        movement = movement_delta_for_key(key)
+        if movement is not None:
+            self.move_cursor(*movement)
         elif key in (ord(" "), 10, 13):
             self.select_at_cursor()
         elif key == 9:
             self.cycle_selection()
-        elif key == ord("x"):
+        elif key in (ord("x"), 27):
             self.selected_id = None
             self.selected_kind = None
             self.build_menu_open = False
@@ -1710,7 +1775,7 @@ class Game:
         self.draw_sidebar(map_screen_w, sidebar, height)
         self.draw_log(height, width)
         if self.winner is not None:
-            overlay = f"{self.players[self.winner].name} wins. Press q or Esc."
+            overlay = f"{self.players[self.winner].name} wins. Press q."
             self.stdscr.addstr(map_h // 2, max(0, map_screen_w // 2 - len(overlay) // 2), overlay, curses.A_BOLD)
         elif player.ageing:
             text = f"Aging: {AGE_NAMES[player.age + 1]} ({player.ageing.time_left})"
@@ -1804,7 +1869,7 @@ class Game:
             [
                 "",
                 "Keys:",
-                "Arrows move",
+                "Arrows/^B^F^P^N move",
                 "Shift+Arrows fast",
                 "<space> select",
                 "Tab cycle owned",
@@ -1815,7 +1880,7 @@ class Game:
                 "s soldier",
                 "n next age",
                 "t tech",
-                "x clear",
+                "x/Esc clear",
                 "q quit",
             ]
         )
@@ -2323,6 +2388,9 @@ class SSHOfEmpiresApp:
     def __init__(self, stdscr: curses.window) -> None:
         self.stdscr = stdscr
         self.store = LobbyStore()
+        if hasattr(curses, "set_escdelay"):
+            curses.set_escdelay(CURSES_ESCDELAY_MS)
+        self.stdscr.keypad(True)
 
     def safe_addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
         height, width = self.stdscr.getmaxyx()
@@ -2767,6 +2835,7 @@ class SSHOfEmpiresApp:
             key = self.stdscr.getch()
             if key == -1:
                 continue
+            key = normalize_input_key(self.stdscr, key, TICK_MS)
             if game.build_menu_open:
                 if key == ord("q"):
                     self.store.leave_room(player_id)
@@ -2791,30 +2860,17 @@ class SSHOfEmpiresApp:
                     )
                     game.build_menu_open = False
                 continue
-            if key in (ord("q"), 27):
+            if key == ord("q"):
                 self.store.leave_room(player_id)
                 return
-            if key == curses.KEY_LEFT:
-                game.move_cursor(-1, 0)
-            elif key == curses.KEY_DOWN:
-                game.move_cursor(0, 1)
-            elif key == curses.KEY_UP:
-                game.move_cursor(0, -1)
-            elif key == curses.KEY_RIGHT:
-                game.move_cursor(1, 0)
-            elif key == getattr(curses, "KEY_SLEFT", -1):
-                game.move_cursor(-FAST_SCROLL, 0)
-            elif key == getattr(curses, "KEY_SF", -1):
-                game.move_cursor(0, FAST_SCROLL)
-            elif key == getattr(curses, "KEY_SR", -1):
-                game.move_cursor(0, -FAST_SCROLL)
-            elif key == getattr(curses, "KEY_SRIGHT", -1):
-                game.move_cursor(FAST_SCROLL, 0)
+            movement = movement_delta_for_key(key)
+            if movement is not None:
+                game.move_cursor(*movement)
             elif key in (ord(" "), 10, 13):
                 game.select_at_cursor()
             elif key == 9:
                 game.cycle_selection()
-            elif key == ord("x"):
+            elif key in (ord("x"), 27):
                 game.selected_kind = None
                 game.selected_id = None
                 game.build_menu_open = False
