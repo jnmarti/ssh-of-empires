@@ -1,0 +1,4 @@
+interface:
+  display_name: "Play SSH of Empires"
+  short_description: "Join human-hosted rooms and play to win"
+  default_prompt: "Use $play-ssh-of-empires to join my SSH of Empires room; I will host and provide the room code."

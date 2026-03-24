@@ -1,0 +1,17 @@
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name ${website_domain} _;
+
+    root ${web_root};
+    index index.html;
+
+    location /_next/static/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

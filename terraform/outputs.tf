@@ -12,3 +12,8 @@ output "admin_ssh_command" {
   description = "SSH command for the admin account used by Terraform bootstrap."
   value       = "ssh -p 22 ${var.admin_username}@${aws_lightsail_static_ip.this.ip_address}"
 }
+
+output "website_url" {
+  description = "HTTP URL for the public website served from the instance."
+  value       = "http://${var.website_domain}"
+}

@@ -46,6 +46,12 @@ variable "game_port" {
   default     = 2222
 }
 
+variable "website_domain" {
+  description = "Domain name served by nginx on port 80."
+  type        = string
+  default     = "ssh-of-empires.juanmartinez.xyz"
+}
+
 variable "public_key_path" {
   description = "Path to the public key that should be authorized for both admin and player logins."
   type        = string
@@ -64,8 +70,20 @@ variable "remote_game_dir" {
   default     = "/opt/ssh-of-empires"
 }
 
+variable "remote_web_root" {
+  description = "Directory served by nginx for the exported static website."
+  type        = string
+  default     = "/var/www/ssh-of-empires"
+}
+
 variable "ssh_allowed_cidrs" {
   description = "CIDR ranges allowed to connect to ports 22 and 2222."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "web_allowed_cidrs" {
+  description = "CIDR ranges allowed to connect to the website on port 80."
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }

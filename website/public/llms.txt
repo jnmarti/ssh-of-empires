@@ -1,0 +1,127 @@
+SSH of Empires: LLM Guide
+
+Purpose
+This document is for AI agents connecting to SSH of Empires, a terminal RTS played over SSH.
+
+Primary URL
+https://ssh-of-empires.juanmartinez.xyz/llms.txt
+
+Game Access
+- Connect with: ssh -p 2222 -t player@ssh-of-empires.juanmartinez.xyz
+- Use a full terminal type if needed: TERM=xterm-256color
+- Recommended terminal size: at least 90 columns by 22 rows
+
+Multiplayer Join Flow
+1. Connect over SSH.
+2. In the main menu, choose Multiplayer.
+3. Choose Join Room.
+4. Enter the room code provided by the host.
+5. Wait in the lobby until the host tells you to get ready.
+
+Lobby Behavior
+- Use /ready when instructed by the host or admin.
+- After using /ready, wait for the host to start the match.
+- Do not leave the room unless instructed.
+- Useful lobby commands:
+  /ready
+  /unready
+  /name <new_name>
+  /leave
+  /help
+- Host-only command:
+  /start
+
+Core Match Goal
+- Build an economy.
+- Train units.
+- Advance through the ages.
+- Destroy enemy units and buildings.
+- You win when you are the last civilization with surviving units or buildings.
+
+Starting State
+- You begin with 1 Town Center, 3 Villagers, and 1 Scout.
+- Initial population cap is 4, so early expansion usually requires a House quickly.
+
+Important Controls
+- Arrow keys: move cursor
+- Shift + Arrow keys: move cursor faster
+- Space or Enter: select unit, building, or resource under cursor
+- Tab: cycle through your own units and buildings
+- x: clear selection
+- a: context command
+- b: open build menu for a selected Villager
+- v: queue a Villager at a selected Town Center
+- s: queue a military unit at a selected Barracks
+- n: advance age at a selected Town Center
+- t: research tech at a selected Mill or Barracks
+- q or Esc: quit
+
+How Commands Work
+- Think of Space as select and a as act.
+- Examples:
+  Select a Villager, move cursor to a tree, press a: gather wood.
+  Select a Villager, move cursor to berries, press a: gather food.
+  Select a military unit, move cursor to an enemy, press a: attack.
+  Select a unit, move cursor to empty ground, press a: move.
+
+Build Menu
+- With a Villager selected, press b.
+- Then choose:
+  1 or h: House
+  2 or l: Lumber Camp
+  3 or m: Mill
+  4 or r: Barracks
+
+Recommended Early Game
+1. Build a House to remove the initial population cap.
+2. Queue more Villagers from the Town Center.
+3. Send Villagers to food and wood.
+4. Build a Mill near berries and a Lumber Camp near trees when efficient.
+5. Build a Barracks once your economy can support military production.
+6. Train infantry and pressure opponents while continuing Villager production.
+
+Resources
+- Food: villagers, military, age advancement
+- Wood: houses and production buildings
+- Gold: later military and scaling
+- Stone: strategic mined resource
+
+Resource Sources
+- Tree (木): wood
+- Berry Bush (果): food
+- Gazelle (鹿): huntable food
+- Carcass (肉): food after a Villager kills a gazelle
+- Gold Vein (金): gold
+- Stone Outcrop (石): stone
+
+Drop-Off Rules
+- Food returns to the nearest Town Center or Mill.
+- Wood returns to the nearest Town Center or Lumber Camp.
+- Gold returns to the Town Center.
+- Stone returns to the Town Center.
+
+Units
+- Villager (民): gathers, hunts, and constructs
+- Scout (馬): explores quickly and can fight lightly
+- Clubman / Axeman / Swordsman: basic barracks infantry that get stronger with age progression
+
+Buildings
+- Town Center (町): trains Villagers and advances age
+- House (家): increases population cap
+- Lumber Camp (伐): wood drop-off
+- Mill (粉): food drop-off and economy research
+- Barracks (陣): military production and military research
+
+Winning Advice
+- Do not stay population capped.
+- Villager production is critical in the early game.
+- Use the Scout to reveal the map and track enemy positions.
+- Expand economy before overcommitting to early fights.
+- Build military before the opponent reaches a stronger age uncontested.
+- Attack enemy Villagers, Barracks, and Town Center when opportunities appear.
+- Keep producing units while fighting.
+
+Operational Notes For Agents
+- If the UI shows that the terminal is too small, resize to at least 90x22.
+- If arrow keys misbehave in an automated terminal, verify the terminal is running with a proper TTY and TERM=xterm-256color.
+- Do not assume you can rejoin a match already in progress; once removed from a live game, joining may be blocked.
