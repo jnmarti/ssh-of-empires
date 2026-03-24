@@ -1,0 +1,269 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #0e0e0e;
+  --color-foreground: #ffffff;
+  --color-surface: #0e0e0e;
+  --color-surface-dim: #0e0e0e;
+  --color-surface-bright: #2c2c2c;
+  --color-surface-variant: #262626;
+  --color-surface-container: #1a1a1a;
+  --color-surface-container-low: #131313;
+  --color-surface-container-high: #20201f;
+  --color-surface-container-highest: #262626;
+  --color-surface-container-lowest: #000000;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #adaaaa;
+  --color-on-background: #ffffff;
+  --color-primary: #f5ce53;
+  --color-primary-dim: #e6c047;
+  --color-primary-container: #c09d24;
+  --color-on-primary: #584500;
+  --color-on-primary-container: #2c2100;
+  --color-secondary: #59ee50;
+  --color-secondary-dim: #49e043;
+  --color-secondary-container: #006e0a;
+  --color-on-secondary: #005406;
+  --color-on-secondary-container: #e6ffdb;
+  --color-tertiary: #ff9f4a;
+  --color-tertiary-dim: #ed8200;
+  --color-tertiary-container: #fd8b00;
+  --color-on-tertiary: #532a00;
+  --color-on-tertiary-container: #442100;
+  --color-error: #ff7351;
+  --color-error-dim: #d53d18;
+  --color-error-container: #b92902;
+  --color-on-error: #450900;
+  --color-on-error-container: #ffd2c8;
+  --color-outline: #767575;
+  --color-outline-variant: #484847;
+  --color-inverse-surface: #fcf9f8;
+  --color-inverse-on-surface: #565555;
+  --color-inverse-primary: #745c00;
+  --color-surface-tint: #f5ce53;
+
+  --font-headline: "Noto Serif", serif;
+  --font-body: "Space Grotesk", sans-serif;
+  --font-label: "Space Grotesk", sans-serif;
+}
+
+body {
+  background-color: #0e0e0e;
+  color: #ffffff;
+  font-family: var(--font-body);
+}
+
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* ─── Terminal cursor ─── */
+.terminal-cursor::after {
+  content: "_";
+  animation: blink 1s infinite step-end;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ─── Historical texture ─── */
+.historical-texture {
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* ─── Glitch title effect ─── */
+.glitch-title {
+  position: relative;
+}
+
+.glitch-title::before,
+.glitch-title::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.glitch-title::before {
+  color: var(--color-primary);
+  animation: glitch-1 4s infinite linear alternate-reverse;
+  clip-path: inset(0 0 80% 0);
+  opacity: 0.8;
+}
+
+.glitch-title::after {
+  color: var(--color-secondary);
+  animation: glitch-2 4s infinite linear alternate-reverse;
+  clip-path: inset(80% 0 0 0);
+  opacity: 0.6;
+}
+
+@keyframes glitch-1 {
+  0%, 85% { transform: translate(0); }
+  86% { transform: translate(-3px, 1px); }
+  87% { transform: translate(3px, -1px); }
+  88% { transform: translate(-1px, 2px); }
+  89%, 100% { transform: translate(0); }
+}
+
+@keyframes glitch-2 {
+  0%, 90% { transform: translate(0); }
+  91% { transform: translate(2px, -1px); }
+  92% { transform: translate(-2px, 1px); }
+  93% { transform: translate(1px, -2px); }
+  94%, 100% { transform: translate(0); }
+}
+
+/* ─── Hero entrance animations ─── */
+.hero-fade-in {
+  animation: heroFadeIn 1.2s ease-out both;
+}
+
+.hero-slide-up {
+  animation: heroSlideUp 1s ease-out both;
+}
+
+.hero-slide-up-delayed {
+  animation: heroSlideUp 1s ease-out 0.2s both;
+}
+
+.hero-slide-up-delayed-2 {
+  animation: heroSlideUp 1s ease-out 0.4s both;
+}
+
+.hero-slide-up-delayed-3 {
+  animation: heroSlideUp 1s ease-out 0.6s both;
+}
+
+.hero-stats-enter {
+  animation: heroStatsEnter 0.8s ease-out 0.8s both;
+}
+
+@keyframes heroFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes heroSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes heroStatsEnter {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ─── Scroll reveal system ─── */
+.sr-hidden {
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sr-up {
+  transform: translateY(40px);
+}
+
+.sr-left {
+  transform: translateX(-40px);
+}
+
+.sr-right {
+  transform: translateX(40px);
+}
+
+.sr-fade {
+  transform: none;
+}
+
+.sr-visible {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* ─── Scan line overlay for hero ─── */
+.scan-lines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+/* ─── Live pulse on server stats ─── */
+.live-pulse {
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  .glitch-title::before,
+  .glitch-title::after {
+    animation: none;
+    display: none;
+  }
+
+  .hero-fade-in,
+  .hero-slide-up,
+  .hero-slide-up-delayed,
+  .hero-slide-up-delayed-2,
+  .hero-slide-up-delayed-3,
+  .hero-stats-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .sr-hidden {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .live-pulse {
+    animation: none;
+  }
+
+  .scan-lines::after {
+    display: none;
+  }
+}
