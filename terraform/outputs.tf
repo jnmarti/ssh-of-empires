@@ -14,6 +14,6 @@ output "admin_ssh_command" {
 }
 
 output "website_url" {
-  description = "HTTP URL for the public website served from the instance."
-  value       = "http://${var.website_domain}"
+  description = "Public URL for the website served from the instance."
+  value       = var.enable_https ? "https://${var.website_domain}" : "http://${var.website_domain}"
 }

@@ -11,14 +11,15 @@ locals {
     for rel in fileset(local.website_source_dir, "**") : rel
     if length(regexall("^(node_modules|\\.next|out)(/|$)", rel)) == 0
   ])
-  website_hash    = sha256(join("", [for rel in local.website_files : "${rel}:${filesha256("${local.website_source_dir}/${rel}")}"]))
-  shell_template  = "${path.module}/templates/player_ssh_game_shell.sh.tftpl"
-  sshd_template   = "${path.module}/templates/sshd_terminal_empires.conf.tftpl"
-  nginx_template  = "${path.module}/templates/ssh_of_empires_site.conf.tftpl"
-  instance_name   = "${var.project_name}-instance"
-  static_ip_name  = "${var.project_name}-ip"
-  key_pair_name   = "${var.project_name}-key"
-  game_shell_path = "${var.remote_game_dir}/ssh_game_shell.sh"
+  website_hash        = sha256(join("", [for rel in local.website_files : "${rel}:${filesha256("${local.website_source_dir}/${rel}")}"]))
+  shell_template      = "${path.module}/templates/player_ssh_game_shell.sh.tftpl"
+  sshd_template       = "${path.module}/templates/sshd_terminal_empires.conf.tftpl"
+  nginx_http_template = "${path.module}/templates/ssh_of_empires_site_http.conf.tftpl"
+  nginx_template      = "${path.module}/templates/ssh_of_empires_site.conf.tftpl"
+  instance_name       = "${var.project_name}-instance"
+  static_ip_name      = "${var.project_name}-ip"
+  key_pair_name       = "${var.project_name}-key"
+  game_shell_path     = "${var.remote_game_dir}/ssh_game_shell.sh"
 }
 
 resource "aws_lightsail_key_pair" "this" {
@@ -66,6 +67,16 @@ resource "aws_lightsail_instance_public_ports" "this" {
     protocol  = "tcp"
     cidrs     = var.web_allowed_cidrs
   }
+
+  dynamic "port_info" {
+    for_each = var.enable_https ? [1] : []
+    content {
+      from_port = 443
+      to_port   = 443
+      protocol  = "tcp"
+      cidrs     = var.web_allowed_cidrs
+    }
+  }
 }
 
 resource "null_resource" "bootstrap" {
@@ -75,18 +86,21 @@ resource "null_resource" "bootstrap" {
   ]
 
   triggers = {
-    instance_id     = aws_lightsail_instance.this.id
-    game_hash       = filesha256(local.game_source)
-    website_hash    = local.website_hash
-    shell_hash      = filesha256(local.shell_template)
-    sshd_hash       = filesha256(local.sshd_template)
-    nginx_hash      = filesha256(local.nginx_template)
-    public_key      = sha256(local.public_key)
-    game_port       = tostring(var.game_port)
-    player_user     = var.player_username
-    remote_game_dir = var.remote_game_dir
-    website_domain  = var.website_domain
-    website_root    = var.remote_web_root
+    instance_id       = aws_lightsail_instance.this.id
+    game_hash         = filesha256(local.game_source)
+    website_hash      = local.website_hash
+    shell_hash        = filesha256(local.shell_template)
+    sshd_hash         = filesha256(local.sshd_template)
+    nginx_http_hash   = filesha256(local.nginx_http_template)
+    nginx_hash        = filesha256(local.nginx_template)
+    public_key        = sha256(local.public_key)
+    game_port         = tostring(var.game_port)
+    player_user       = var.player_username
+    remote_game_dir   = var.remote_game_dir
+    website_domain    = var.website_domain
+    website_root      = var.remote_web_root
+    enable_https      = tostring(var.enable_https)
+    letsencrypt_email = var.letsencrypt_email
   }
 
   connection {
@@ -136,16 +150,32 @@ resource "null_resource" "bootstrap" {
   }
 
   provisioner "file" {
+    content = templatefile(local.nginx_http_template, {
+      website_domain = var.website_domain
+      web_root       = var.remote_web_root
+    })
+    destination = "/tmp/ssh-of-empires-site-http.conf"
+  }
+
+  provisioner "file" {
     content = templatefile(local.nginx_template, {
       website_domain = var.website_domain
       web_root       = var.remote_web_root
     })
-    destination = "/tmp/ssh-of-empires-site.conf"
+    destination = "/tmp/ssh-of-empires-site-https.conf"
   }
 
   provisioner "file" {
     content     = "${local.public_key}\n"
     destination = "/tmp/player_authorized_keys"
+  }
+
+  provisioner "file" {
+    content     = <<-EOT
+      #!/bin/sh
+      systemctl reload nginx
+    EOT
+    destination = "/tmp/reload-nginx.sh"
   }
 
   provisioner "remote-exec" {
@@ -155,7 +185,7 @@ resource "null_resource" "bootstrap" {
       "sudo dpkg --configure -a || true",
       "sudo apt-get install -f -y || true",
       "sudo apt-get update",
-      "sudo apt-get install -y python3 nginx",
+      "sudo apt-get install -y python3 nginx certbot",
       "sudo mkdir -p ${var.remote_game_dir}",
       "sudo rm -rf ${var.remote_web_root}",
       "sudo mkdir -p ${var.remote_web_root}",
@@ -170,7 +200,7 @@ resource "null_resource" "bootstrap" {
       "sudo chmod 700 /home/${var.player_username}/.ssh",
       "sudo chmod 600 /home/${var.player_username}/.ssh/authorized_keys",
       "sudo install -m 0644 /tmp/ssh-of-empires-sshd.conf /etc/ssh/sshd_config.d/90-ssh-of-empires.conf",
-      "sudo install -m 0644 /tmp/ssh-of-empires-site.conf /etc/nginx/sites-available/ssh-of-empires.conf",
+      "sudo install -m 0644 /tmp/ssh-of-empires-site-http.conf /etc/nginx/sites-available/ssh-of-empires.conf",
       "sudo ln -sfn /etc/nginx/sites-available/ssh-of-empires.conf /etc/nginx/sites-enabled/ssh-of-empires.conf",
       "sudo rm -f /etc/nginx/sites-enabled/default",
       "sudo sshd -t",
@@ -180,6 +210,7 @@ resource "null_resource" "bootstrap" {
       "sudo systemctl restart ssh",
       "sudo systemctl enable nginx",
       "sudo systemctl restart nginx",
+      "if [ \"${var.enable_https}\" = \"true\" ]; then sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy && sudo install -m 0755 /tmp/reload-nginx.sh /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh && if [ -n \"${var.letsencrypt_email}\" ]; then sudo certbot certonly --webroot -w ${var.remote_web_root} -d ${var.website_domain} --non-interactive --agree-tos --email \"${var.letsencrypt_email}\" --keep-until-expiring; else sudo certbot certonly --webroot -w ${var.remote_web_root} -d ${var.website_domain} --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring; fi && sudo install -m 0644 /tmp/ssh-of-empires-site-https.conf /etc/nginx/sites-available/ssh-of-empires.conf && sudo nginx -t && (sudo systemctl enable certbot.timer || true) && sudo systemctl restart nginx; fi",
     ]
   }
 }

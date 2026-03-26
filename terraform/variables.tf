@@ -47,9 +47,21 @@ variable "game_port" {
 }
 
 variable "website_domain" {
-  description = "Domain name served by nginx on port 80."
+  description = "Domain name served by nginx for the static website."
   type        = string
   default     = "ssh-of-empires.juanmartinez.xyz"
+}
+
+variable "enable_https" {
+  description = "Whether to provision a Let's Encrypt certificate and serve the website over HTTPS."
+  type        = bool
+  default     = false
+}
+
+variable "letsencrypt_email" {
+  description = "Email address used for Let's Encrypt registration and expiry notices. Leave empty to register without email."
+  type        = string
+  default     = ""
 }
 
 variable "public_key_path" {
@@ -83,7 +95,7 @@ variable "ssh_allowed_cidrs" {
 }
 
 variable "web_allowed_cidrs" {
-  description = "CIDR ranges allowed to connect to the website on port 80."
+  description = "CIDR ranges allowed to connect to the website on ports 80 and 443."
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }

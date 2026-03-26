@@ -4,7 +4,33 @@ server {
     server_name ${website_domain} _;
 
     root ${web_root};
+
+    location /.well-known/acme-challenge/ {
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name ${website_domain} _;
+
+    root ${web_root};
     index index.html;
+
+    ssl_certificate /etc/letsencrypt/live/${website_domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${website_domain}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSHOfEmpiresSSL:10m;
+    ssl_session_timeout 1d;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
 
     location /_next/static/ {
         add_header Cache-Control "public, max-age=31536000, immutable";
