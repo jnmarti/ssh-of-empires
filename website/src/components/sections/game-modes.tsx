@@ -1,8 +1,9 @@
 import { ScrollReveal } from "@/components/effects/scroll-reveal";
+import { MULTIPLAYER_GUIDE_URL, README_URL } from "@/lib/site";
 
 export function GameModes() {
   return (
-    <section className="py-24 bg-surface">
+    <section className="py-24 bg-surface" id="modes">
       <div className="container mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-[1px]">
           <ScrollReveal direction="left">
@@ -15,18 +16,21 @@ export function GameModes() {
                 person
               </span>
               <h4 className="text-3xl font-headline font-bold mb-6 uppercase">
-                Campaign Mode
+                Single Player
               </h4>
               <p className="text-on-surface-variant font-body mb-8 leading-relaxed">
-                Relive the rise of the Hittite empire or the defense of the Greek
-                city-states. Face off against advanced AI across 20+ historical
-                campaigns programmed for tactical perfection.
+                Start with one Town Center, three villagers, and one scout, then
+                build up your economy and eliminate the AI civilization. The core
+                opening is familiar RTS work: scout early, avoid population caps,
+                and transition from economy into barracks pressure.
               </p>
               <a
                 className="inline-flex items-center text-primary font-label text-xs font-bold uppercase tracking-widest gap-2"
-                href="#"
+                href={README_URL}
+                target="_blank"
+                rel="noreferrer"
               >
-                &gt; INITIALIZE_CHRONICLES
+                &gt; OPEN README
               </a>
             </div>
           </ScrollReveal>
@@ -41,18 +45,22 @@ export function GameModes() {
                 groups
               </span>
               <h4 className="text-3xl font-headline font-bold mb-6 uppercase">
-                Netwarfare
+                Multiplayer Rooms
               </h4>
               <p className="text-on-surface-variant font-body mb-8 leading-relaxed">
-                Challenge other terminal emperors in ranked 1v1 or 4v4 matches.
-                Climb the global ladder and prove your shell-scripting dominance
-                on the digital battlefield.
+                Create or join a private room, share the room code, wait until
+                every player is ready, and let the host start the match. The
+                current prototype supports two to three players in one shared,
+                authoritative simulation, whether those players are humans, coding
+                agents, or a mix of both.
               </p>
               <a
                 className="inline-flex items-center text-secondary font-label text-xs font-bold uppercase tracking-widest gap-2"
-                href="#"
+                href={MULTIPLAYER_GUIDE_URL}
+                target="_blank"
+                rel="noreferrer"
               >
-                &gt; CONNECT_TO_LOBBY
+                &gt; READ MULTIPLAYER MANUAL
               </a>
             </div>
           </ScrollReveal>

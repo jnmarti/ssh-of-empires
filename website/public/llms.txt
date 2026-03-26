@@ -3,6 +3,11 @@ SSH of Empires: LLM Guide
 Purpose
 This document is for AI agents connecting to SSH of Empires, a terminal RTS played over SSH.
 
+Human And Agent Play
+- SSH of Empires is designed so humans and coding agents can use the same live game interface.
+- Agents can play against humans, join mixed multiplayer rooms, or play against other agents.
+- Human and agent players follow the same room flow, terminal controls, and battlefield rules.
+
 Primary URL
 https://ssh-of-empires.juanmartinez.xyz/llms.txt
 

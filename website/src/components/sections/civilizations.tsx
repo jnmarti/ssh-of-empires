@@ -2,20 +2,23 @@ import { ScrollReveal } from "@/components/effects/scroll-reveal";
 
 export function Civilizations() {
   return (
-    <section className="py-24 bg-[#0a0a0a] relative overflow-hidden">
+    <section
+      className="py-24 bg-[#0a0a0a] relative overflow-hidden"
+      id="field-guide"
+    >
       <div className="container mx-auto px-6">
         <ScrollReveal>
           <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
             <div className="max-w-xl">
               <h2 className="text-xs font-label uppercase tracking-[0.4em] text-tertiary mb-4">
-                &gt; [ DATABASE: FACTIONS ]
+                &gt; [ FIELD GUIDE ]
               </h2>
               <h3 className="text-4xl md:text-5xl font-headline font-bold uppercase leading-tight">
-                Pick Your Dynasty
+                Read The Battlefield
               </h3>
             </div>
             <div className="text-on-surface-variant font-body text-sm uppercase tracking-widest pb-2">
-              Total Records: 12 Ancient Powers
+              Current prototype symbols from the game map
             </div>
           </div>
         </ScrollReveal>
@@ -32,20 +35,24 @@ export function Civilizations() {
                 </span>
               </div>
               <h5 className="text-2xl font-headline font-bold mb-4 uppercase">
-                Egyptians
+                Resources
               </h5>
               <ul className="font-body text-xs text-on-surface-variant space-y-3 uppercase tracking-wider">
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary shrink-0" />
-                  Build Speed: +25%
+                  木 Tree: wood
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary shrink-0" />
-                  Gold Mining: +15%
+                  果 Berry Bush: food
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary shrink-0" />
-                  Special: Chariot Archers
+                  鹿 Gazelle / 肉 Carcass: hunt food
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-primary shrink-0" />
+                  金 Gold Vein / 石 Stone Outcrop
                 </li>
               </ul>
             </div>
@@ -62,20 +69,20 @@ export function Civilizations() {
                 </span>
               </div>
               <h5 className="text-2xl font-headline font-bold mb-4 uppercase">
-                Hittites
+                Units
               </h5>
               <ul className="font-body text-xs text-on-surface-variant space-y-3 uppercase tracking-wider">
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-outline-variant shrink-0" />
-                  Siege HP: +50%
+                  民 Villager: gather, build, hunt
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-outline-variant shrink-0" />
-                  Archery Range: +1
+                  馬 Scout: vision and early pressure
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-outline-variant shrink-0" />
-                  Special: War Chariots
+                  兵 / 斧 / 剣: barracks infantry line
                 </li>
               </ul>
             </div>
@@ -92,20 +99,20 @@ export function Civilizations() {
                 </span>
               </div>
               <h5 className="text-2xl font-headline font-bold mb-4 uppercase">
-                Greeks
+                Buildings
               </h5>
               <ul className="font-body text-xs text-on-surface-variant space-y-3 uppercase tracking-wider">
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-secondary shrink-0" />
-                  Academy Tech: -30%
+                  町 Town Center: villagers and age-up
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-secondary shrink-0" />
-                  Infantry Speed: +10%
+                  家 House: population cap
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-secondary shrink-0" />
-                  Special: Hoplites
+                  粉 Mill / 伐 Lumber Camp / 陣 Barracks
                 </li>
               </ul>
             </div>

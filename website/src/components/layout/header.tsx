@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { GITHUB_URL } from "@/lib/site";
 
 const navLinks = [
-  { label: "The Game", href: "#game", active: true },
+  { label: "The Game", href: "#game" },
+  { label: "Humans + Agents", href: "#agents" },
   { label: "Play", href: "#play" },
-  { label: "Multiplayer", href: "#multiplayer" },
-  { label: "Wiki", href: "#wiki" },
+  { label: "Field Guide", href: "#field-guide" },
 ];
 
 export function Header() {
@@ -23,11 +24,7 @@ export function Header() {
           <a
             key={link.label}
             href={link.href}
-            className={`font-label uppercase tracking-widest text-xs transition-colors duration-200 ${
-              link.active
-                ? "text-primary font-bold border-b-2 border-primary pb-1"
-                : "text-outline-variant hover:text-primary"
-            }`}
+            className="font-label uppercase tracking-widest text-xs transition-colors duration-200 text-outline-variant hover:text-primary"
           >
             {link.label}
           </a>
@@ -35,9 +32,20 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        <button className="bg-primary hover:bg-primary-dim text-on-primary px-4 py-2 font-label text-xs font-bold uppercase tracking-widest transition-all">
-          LOGIN_TERMINAL
-        </button>
+        <a
+          className="hidden sm:inline-flex border border-primary/30 text-primary px-4 py-2 font-label text-xs font-bold uppercase tracking-widest transition-all hover:bg-primary/10"
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          GitHub
+        </a>
+        <a
+          className="bg-primary hover:bg-primary-dim text-on-primary px-4 py-2 font-label text-xs font-bold uppercase tracking-widest transition-all"
+          href="#play"
+        >
+          Play via SSH
+        </a>
 
         <button
           className="md:hidden text-on-surface"
@@ -58,13 +66,20 @@ export function Header() {
                 key={link.label}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className={`font-label uppercase tracking-widest text-xs py-2 ${
-                  link.active ? "text-primary font-bold" : "text-outline-variant"
-                }`}
+                className="font-label uppercase tracking-widest text-xs py-2 text-outline-variant"
               >
                 {link.label}
               </a>
             ))}
+            <a
+              className="font-label uppercase tracking-widest text-xs py-2 text-outline-variant"
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setOpen(false)}
+            >
+              GitHub
+            </a>
           </div>
         </div>
       )}
