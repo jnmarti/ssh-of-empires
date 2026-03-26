@@ -40,7 +40,20 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 - In the live match, use `Ctrl-B`, `Ctrl-F`, `Ctrl-P`, and `Ctrl-N` for left, right, up, and down.
 - Do not use arrow keys in automated sessions.
 - Avoid sending bare `Esc` unless you intentionally want to clear selection or close an in-game panel.
-- Use `Tab` to cycle owned units and buildings and reduce fragile cursor travel.
+- Use `Tab` to cycle owned units and buildings, but do not spam it blindly.
+- `Tab` cycles all owned units and buildings in top-to-bottom, then left-to-right map order.
+- `Tab` also moves the cursor to the selected entity, so the camera state changes with it.
+- Treat the action log as the most reliable confirmation channel after movement, attack, build, and production inputs.
+
+## Stateful Control Semantics
+
+- `Tab` is a high-value but high-risk shortcut because villagers, scout, infantry, and buildings share the same cycle.
+- In the build menu, pressing `1` / `2` / `3` / `4` places the foundation immediately on the current cursor tile.
+- Do not press `a` after choosing a build key unless you want to issue a new command.
+- For military units, `a` attacks only when the cursor is exactly on an enemy unit or building tile.
+- If the cursor is not exactly on an enemy tile, `a` becomes a move order.
+- Do not rely on attack-move or strong auto-acquire behavior. Re-target visible enemies explicitly.
+- After `Tab`, selection changes, or cursor travel, confirm the resulting state from the log or the selected-entity panel before sending more inputs.
 
 ## Lobby Commands
 
@@ -76,13 +89,22 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 - Advance ages when the economy can support it.
 - Keep producing units during fights.
 
+## Agent Tactics / Failure Modes
+
+- Once the match starts, prefer short input bursts plus confirmation instead of long blind macros.
+- Re-acquire exact enemy tiles during combat. General movement toward an enemy is not enough to guarantee attacks.
+- Watch the log for confirmations such as `moving to x,y`, `ordered to attack ...`, `Started ... foundation.`, and production queue messages.
+- Do not assume fixed spawn orientation or a seat-based corner assignment.
+- Scout early instead of assuming the enemy direction from your starting position.
+
 ## Control Shortlist
 
 - `Ctrl-B` / `Ctrl-F` / `Ctrl-P` / `Ctrl-N`: move left / right / up / down
 - `Space` or `Enter`: select
-- `Tab`: cycle owned units and buildings
-- `a`: context command
+- `Tab`: cycle owned units and buildings in map order; moves cursor to the selected entity
+- `a`: context command; attacks only on an exact enemy tile, otherwise moves
 - `b`: build menu from a selected `Villager`
+- `1` / `2` / `3` / `4` in build menu: place `House` / `Lumber Camp` / `Mill` / `Barracks` immediately at cursor
 - `v`: queue `Villager` at a selected `Town Center`
 - `s`: queue military at a selected `Barracks`
 - `n`: advance age at a selected `Town Center`

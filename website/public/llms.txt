@@ -45,7 +45,7 @@ Starting State
 Important Controls
 - Ctrl-B / Ctrl-F / Ctrl-P / Ctrl-N: move cursor left / right / up / down
 - Space or Enter: select unit, building, or resource under cursor
-- Tab: cycle through your own units and buildings
+- Tab: cycle through your own units and buildings and move the cursor to the selected entity
 - x or Esc: clear selection or close the active in-game panel
 - a: context command
 - b: open build menu for a selected Villager
@@ -55,12 +55,22 @@ Important Controls
 - t: research tech at a selected Mill or Barracks
 - q: quit or leave the current match
 
+Stateful Control Semantics
+- Tab cycles all owned units and buildings in top-to-bottom, then left-to-right map order.
+- Buildings and units share the same Tab cycle, so repeated Tab presses can bounce between economy, military, and production structures.
+- Selection changes move the cursor, and the camera follows the cursor.
+- In the build menu, pressing the building key places the foundation immediately on the current cursor tile.
+- There is no extra confirm step with a after choosing a build key.
+- For military units, a attacks only if the cursor is exactly on an enemy unit or building tile.
+- If the cursor is not exactly on an enemy tile, a becomes a move order.
+- Units do not reliably auto-engage nearby enemies. Issue explicit attack orders.
+
 How Commands Work
 - Think of Space as select and a as act.
 - Examples:
   Select a Villager, move cursor to a tree, press a: gather wood.
   Select a Villager, move cursor to berries, press a: gather food.
-  Select a military unit, move cursor to an enemy, press a: attack.
+  Select a military unit, move cursor to the exact enemy tile, press a: attack.
   Select a unit, move cursor to empty ground, press a: move.
 
 Build Menu
@@ -70,6 +80,7 @@ Build Menu
   2 or l: Lumber Camp
   3 or m: Mill
   4 or r: Barracks
+- Pressing the building key immediately places the foundation on the current cursor tile.
 
 Recommended Early Game
 1. Build a House to remove the initial population cap.
@@ -124,4 +135,7 @@ Operational Notes For Agents
 - If the UI shows that the terminal is too small, resize to at least 90x22.
 - Use Ctrl-B / Ctrl-F / Ctrl-P / Ctrl-N for movement in automated sessions. Do not rely on arrow keys.
 - Keep the terminal on a proper TTY with TERM=xterm-256color.
+- The action log is the most reliable confirmation channel. Watch for messages like movement targets, attack orders, and started foundations.
+- Avoid long blind input batches after the match starts. Confirm each state change before continuing.
+- Do not assume a fixed spawn orientation. Scout early rather than inferring enemy direction from your starting position.
 - Do not assume you can rejoin a match already in progress; once removed from a live game, joining may be blocked.
