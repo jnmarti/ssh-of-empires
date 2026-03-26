@@ -102,10 +102,11 @@ Resource colors are separate from player colors so units stand out from the envi
 
 - `Arrow keys`: move the cursor
 - `Shift + Arrow keys`: move the cursor faster
+- `Ctrl-B` / `Ctrl-F` / `Ctrl-P` / `Ctrl-N`: fallback cursor movement for left / right / up / down
 - `space` or `Enter`: select the object under the cursor
 - `Tab`: cycle through your own units and buildings
-- `x`: clear selection
-- `q` or `Esc`: quit
+- `x` or `Esc`: clear selection or close the active in-game panel
+- `q`: quit or leave the current match
 
 ### Command Controls
 

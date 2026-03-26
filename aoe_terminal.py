@@ -49,8 +49,15 @@ CHAT_MESSAGE_MAX_LEN = 120
 LOBBY_DB_PATH = os.path.join(tempfile.gettempdir(), "ssh_of_empires_lobby.sqlite3")
 MATCH_LEASE_SECONDS = 0.45
 MATCH_MAX_CATCHUP_STEPS = 4
+CURSES_ESCDELAY_MS = 250
+ESCAPE_SEQUENCE_PEEK_MS = 35
 ROOM_NAME_PATTERN = re.compile(r"^[A-Za-z0-9 '\-]{0,24}$")
 PLAYER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9 _'\-]{1,16}$")
+
+CTRL_B = ord("b") & 0x1F
+CTRL_F = ord("f") & 0x1F
+CTRL_N = ord("n") & 0x1F
+CTRL_P = ord("p") & 0x1F
 
 AGE_NAMES = ["Stone Age", "Tool Age", "Bronze Age"]
 
@@ -130,6 +137,74 @@ UNIT_STATS = {
         "age": 2,
     },
 }
+
+ARROW_FINAL_KEYS = {
+    ord("A"): curses.KEY_UP,
+    ord("B"): curses.KEY_DOWN,
+    ord("C"): curses.KEY_RIGHT,
+    ord("D"): curses.KEY_LEFT,
+}
+
+
+def decode_escape_sequence(sequence: List[int]) -> Optional[int]:
+    if len(sequence) < 2:
+        return None
+    prefix = sequence[0]
+    final = sequence[-1]
+    if prefix not in (ord("["), ord("O")) or final not in ARROW_FINAL_KEYS:
+        return None
+    modifier = "".join(chr(item) for item in sequence[1:-1] if 0 <= item < 256)
+    if ";2" in modifier:
+        return {
+            ord("A"): getattr(curses, "KEY_SR", curses.KEY_UP),
+            ord("B"): getattr(curses, "KEY_SF", curses.KEY_DOWN),
+            ord("C"): getattr(curses, "KEY_SRIGHT", curses.KEY_RIGHT),
+            ord("D"): getattr(curses, "KEY_SLEFT", curses.KEY_LEFT),
+        }[final]
+    return ARROW_FINAL_KEYS[final]
+
+
+def normalize_input_key(stdscr: Optional[curses.window], key: int, restore_timeout_ms: int) -> int:
+    if key != 27 or stdscr is None:
+        return key
+    sequence: List[int] = []
+    try:
+        stdscr.timeout(ESCAPE_SEQUENCE_PEEK_MS)
+        for _ in range(5):
+            follow_up = stdscr.getch()
+            if follow_up == -1:
+                break
+            sequence.append(follow_up)
+            if 64 <= follow_up <= 126:
+                break
+    finally:
+        stdscr.timeout(restore_timeout_ms)
+    decoded = decode_escape_sequence(sequence)
+    if decoded is not None:
+        return decoded
+    for follow_up in reversed(sequence):
+        curses.ungetch(follow_up)
+    return key
+
+
+def movement_delta_for_key(key: int) -> Optional[Tuple[int, int]]:
+    if key in (curses.KEY_LEFT, CTRL_B):
+        return (-1, 0)
+    if key in (curses.KEY_DOWN, CTRL_N):
+        return (0, 1)
+    if key in (curses.KEY_UP, CTRL_P):
+        return (0, -1)
+    if key in (curses.KEY_RIGHT, CTRL_F):
+        return (1, 0)
+    if key == getattr(curses, "KEY_SLEFT", -1):
+        return (-FAST_SCROLL, 0)
+    if key == getattr(curses, "KEY_SF", -1):
+        return (0, FAST_SCROLL)
+    if key == getattr(curses, "KEY_SR", -1):
+        return (0, -FAST_SCROLL)
+    if key == getattr(curses, "KEY_SRIGHT", -1):
+        return (FAST_SCROLL, 0)
+    return None
 
 AGE_ADVANCE = {
     0: {"cost": {"food": 220, "wood": 60}, "time": 80},
@@ -349,7 +424,7 @@ class Game:
         self.base_starts = self.default_spawn_positions(len(self.players))
         for player in self.players:
             player.explored = [[False for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
-        self.logs: List[str] = []
+        self.player_logs: List[List[str]] = [[] for _ in self.players]
         self.cursor_x = 10
         self.cursor_y = 10
         self.camera_x = 0
@@ -365,10 +440,30 @@ class Game:
             self._init_world()
             self.reveal_visibility()
 
-    def _log(self, message: str) -> None:
-        stamp = f"{self.tick:04d}"
-        self.logs.append(f"[{stamp}] {message}")
-        self.logs = self.logs[-LOG_LIMIT:]
+    def _append_log(self, player_id: int, line: str) -> None:
+        if player_id < 0 or player_id >= len(self.player_logs):
+            return
+        self.player_logs[player_id].append(line)
+        self.player_logs[player_id] = self.player_logs[player_id][-LOG_LIMIT:]
+
+    def _log(self, message: str, player_id: Optional[int] = None) -> None:
+        stamp = f"[{self.tick:04d}] {message}"
+        target = self.local_player_id if player_id is None else player_id
+        self._append_log(target, stamp)
+
+    def _log_many(self, message: str, player_ids: Iterable[int]) -> None:
+        stamp = f"[{self.tick:04d}] {message}"
+        seen: Set[int] = set()
+        for player_id in player_ids:
+            if player_id in seen:
+                continue
+            seen.add(player_id)
+            self._append_log(player_id, stamp)
+
+    def visible_logs(self) -> List[str]:
+        if self.local_player_id < 0 or self.local_player_id >= len(self.player_logs):
+            return []
+        return self.player_logs[self.local_player_id]
 
     def _new_id(self) -> int:
         value = self.next_id
@@ -407,6 +502,8 @@ class Game:
     def initialize_curses(self) -> None:
         if self.stdscr is None:
             return
+        if hasattr(curses, "set_escdelay"):
+            curses.set_escdelay(CURSES_ESCDELAY_MS)
         self.stdscr.keypad(True)
         if curses.has_colors():
             curses.start_color()
@@ -431,7 +528,7 @@ class Game:
                 "next_id": self.next_id,
                 "tick": self.tick,
                 "winner": self.winner,
-                "logs": self.logs,
+                "player_logs": [list(lines) for lines in self.player_logs],
                 "ai_memory": self.ai_memory,
                 "players": [
                     {
@@ -524,7 +621,6 @@ class Game:
         self.tick = int(data["tick"])
         winner = data.get("winner")
         self.winner = None if winner is None else int(winner)
-        self.logs = list(data.get("logs", []))
         self.ai_memory = dict(data.get("ai_memory", {}))
         self.players = []
         for item in data["players"]:
@@ -553,6 +649,17 @@ class Game:
                 explored=item["explored"],
             )
             self.players.append(player)
+        self.player_logs = [[] for _ in self.players]
+        raw_player_logs = data.get("player_logs")
+        if isinstance(raw_player_logs, list):
+            for idx, lines in enumerate(raw_player_logs[: len(self.player_logs)]):
+                if isinstance(lines, list):
+                    self.player_logs[idx] = [str(line) for line in lines[-LOG_LIMIT:]]
+        else:
+            legacy_logs = data.get("logs", [])
+            if isinstance(legacy_logs, list):
+                shared_lines = [str(line) for line in legacy_logs[-LOG_LIMIT:]]
+                self.player_logs = [list(shared_lines) for _ in self.players]
         self.base_starts = self.default_spawn_positions(len(self.players))
         self.resources = {}
         for item in data["resources"]:
@@ -695,7 +802,7 @@ class Game:
         for dx, dy in [(1, 0), (0, 1), (1, 1)]:
             self.add_unit(owner, "villager", x + dx, y + dy)
         self.add_unit(owner, "scout", x + 2, y)
-        self._log(f"{self.players[owner].name} starts with a Town Center, 3 villagers, and 1 scout.")
+        self._log(f"{self.players[owner].name} starts with a Town Center, 3 villagers, and 1 scout.", player_id=owner)
         if owner == self.local_player_id and self.selected_id is None:
             self.selected_kind = "building"
             self.selected_id = tc.id
@@ -811,33 +918,21 @@ class Game:
         key = self.stdscr.getch()
         if key == -1:
             return
+        key = normalize_input_key(self.stdscr, key, TICK_MS)
         if self.build_menu_open:
             self.handle_build_menu_input(key)
             return
-        if key in (ord("q"), 27):
+        if key == ord("q"):
             self.running = False
             return
-        if key == curses.KEY_LEFT:
-            self.move_cursor(-1, 0)
-        elif key == curses.KEY_DOWN:
-            self.move_cursor(0, 1)
-        elif key == curses.KEY_UP:
-            self.move_cursor(0, -1)
-        elif key == curses.KEY_RIGHT:
-            self.move_cursor(1, 0)
-        elif key == getattr(curses, "KEY_SLEFT", -1):
-            self.move_cursor(-FAST_SCROLL, 0)
-        elif key == getattr(curses, "KEY_SF", -1):
-            self.move_cursor(0, FAST_SCROLL)
-        elif key == getattr(curses, "KEY_SR", -1):
-            self.move_cursor(0, -FAST_SCROLL)
-        elif key == getattr(curses, "KEY_SRIGHT", -1):
-            self.move_cursor(FAST_SCROLL, 0)
+        movement = movement_delta_for_key(key)
+        if movement is not None:
+            self.move_cursor(*movement)
         elif key in (ord(" "), 10, 13):
             self.select_at_cursor()
         elif key == 9:
             self.cycle_selection()
-        elif key == ord("x"):
+        elif key in (ord("x"), 27):
             self.selected_id = None
             self.selected_kind = None
             self.build_menu_open = False
@@ -948,6 +1043,7 @@ class Game:
         self._log("Select a unit to move, gather, hunt, or build.")
 
     def command_unit(self, unit: Unit, target_x: Optional[int] = None, target_y: Optional[int] = None) -> None:
+        log_owner = unit.owner
         tx = self.cursor_x if target_x is None else target_x
         ty = self.cursor_y if target_y is None else target_y
         enemy_unit = self.unit_at(tx, ty)
@@ -955,14 +1051,14 @@ class Game:
             unit.state = "attack"
             unit.target = ("unit", enemy_unit.id)
             unit.destination = None
-            self._log(f"{unit.name} ordered to attack {enemy_unit.name}.")
+            self._log(f"{unit.name} ordered to attack {enemy_unit.name}.", player_id=log_owner)
             return
         enemy_building = self.building_at(tx, ty)
         if enemy_building and enemy_building.owner != unit.owner:
             unit.state = "attack"
             unit.target = ("building", enemy_building.id)
             unit.destination = None
-            self._log(f"{unit.name} ordered to attack {enemy_building.name}.")
+            self._log(f"{unit.name} ordered to attack {enemy_building.name}.", player_id=log_owner)
             return
         resource = self.resource_at(tx, ty)
         if resource:
@@ -973,37 +1069,37 @@ class Game:
                 unit.destination = None
                 unit.build_target = None
                 unit.gather_progress = 0.0
-                self._log(f"{unit.name} ordered to kill the gazelle.")
+                self._log(f"{unit.name} ordered to kill the gazelle.", player_id=log_owner)
                 return
         if unit.kind == "villager":
             if resource:
                 rid, node = resource
                 if node.kind == "gazelle" and not node.alive and not node.gatherable:
-                    self._log("This carcass has no usable food.")
+                    self._log("This carcass has no usable food.", player_id=log_owner)
                     return
                 unit.target = ("resource", rid)
                 unit.destination = None
                 unit.gather_progress = 0.0
                 if node.kind == "gazelle" and node.alive:
                     unit.state = "hunt"
-                    self._log("Villager ordered to hunt the gazelle.")
+                    self._log("Villager ordered to hunt the gazelle.", player_id=log_owner)
                 else:
                     unit.state = "gather"
-                    self._log(f"Villager ordered to gather from {node.name}.")
+                    self._log(f"Villager ordered to gather from {node.name}.", player_id=log_owner)
                 return
             building = self.building_at(tx, ty)
             if building and building.owner == unit.owner and not building.complete:
                 unit.state = "build"
                 unit.build_target = building.id
                 unit.gather_progress = 0.0
-                self._log(f"Villager ordered to construct {building.name}.")
+                self._log(f"Villager ordered to construct {building.name}.", player_id=log_owner)
                 return
         unit.state = "move"
         unit.destination = (tx, ty)
         unit.target = None
         unit.build_target = None
         unit.gather_progress = 0.0
-        self._log(f"{unit.name} moving to {tx},{ty}.")
+        self._log(f"{unit.name} moving to {tx},{ty}.", player_id=log_owner)
 
     def command_unit_for_player(self, owner: int, unit_id: int, target_x: int, target_y: int) -> None:
         unit = self.units.get(unit_id)
@@ -1050,7 +1146,7 @@ class Game:
         unit.destination = None
         unit.target = None
         unit.gather_progress = 0.0
-        self._log(f"{player.name} started {building.name} foundation.")
+        self._log(f"{player.name} started {building.name} foundation.", player_id=owner)
 
     def queue_villager(self) -> None:
         selected = self.get_selected()
@@ -1084,7 +1180,7 @@ class Game:
         if not player.spend(cost):
             return
         building.queue.append(ProductionItem("unit", "villager", UNIT_STATS["villager"]["train_time"]))
-        self._log(f"{player.name} queued a Villager.")
+        self._log(f"{player.name} queued a Villager.", player_id=owner)
 
     def available_military(self, age: int) -> str:
         if age >= 2:
@@ -1127,7 +1223,7 @@ class Game:
         if not player.spend(stats["cost"]):
             return
         building.queue.append(ProductionItem("unit", kind, stats["train_time"]))
-        self._log(f"{player.name} queued {stats['name']}.")
+        self._log(f"{player.name} queued {stats['name']}.", player_id=owner)
 
     def try_advance_age(self) -> None:
         selected = self.get_selected()
@@ -1164,7 +1260,7 @@ class Game:
         if not data or not player.spend(data["cost"]):
             return
         player.ageing = ProductionItem("age", None, data["time"])
-        self._log(f"{player.name} advancing to {AGE_NAMES[player.age + 1]}.")
+        self._log(f"{player.name} advancing to {AGE_NAMES[player.age + 1]}.", player_id=owner)
 
     def try_research(self) -> None:
         selected = self.get_selected()
@@ -1217,7 +1313,7 @@ class Game:
             if not player.spend(cost):
                 return
             building.queue.append(ProductionItem("tech", "economy", TECHS["economy"]["time"][level]))
-            self._log(f"{player.name} queued Harvesting.")
+            self._log(f"{player.name} queued Harvesting.", player_id=owner)
             return
         if building.kind == "barracks":
             level = player.military_level
@@ -1227,7 +1323,7 @@ class Game:
             if not player.spend(cost):
                 return
             building.queue.append(ProductionItem("tech", "military", TECHS["military"]["time"][level]))
-            self._log(f"{player.name} queued Weapons.")
+            self._log(f"{player.name} queued Weapons.", player_id=owner)
 
     def apply_command(self, command: Dict[str, object]) -> None:
         kind = str(command.get("kind", ""))
@@ -1268,7 +1364,7 @@ class Game:
             if player.ageing.time_left <= 0:
                 player.age += 1
                 player.ageing = None
-                self._log(f"{player.name} advanced to {AGE_NAMES[player.age]}.")
+                self._log(f"{player.name} advanced to {AGE_NAMES[player.age]}.", player_id=player.id)
 
     def update_buildings(self) -> None:
         for building in list(self.buildings.values()):
@@ -1284,20 +1380,20 @@ class Game:
         if item.kind == "unit" and item.target:
             unit = self.add_unit(building.owner, item.target, building.x + 1, building.y)
             if unit:
-                self._log(f"{player.name} trained {unit.name}.")
+                self._log(f"{player.name} trained {unit.name}.", player_id=building.owner)
             else:
                 refund = UNIT_STATS[item.target]["cost"]
                 player.food += refund.get("food", 0)
                 player.wood += refund.get("wood", 0)
                 player.gold += refund.get("gold", 0)
                 player.stone += refund.get("stone", 0)
-                self._log(f"{player.name} training failed: no free spawn tile.")
+                self._log(f"{player.name} training failed: no free spawn tile.", player_id=building.owner)
         elif item.kind == "tech" and item.target == "economy":
             player.economy_level += 1
-            self._log(f"{player.name} completed {TECHS['economy']['name']} {player.economy_level}.")
+            self._log(f"{player.name} completed {TECHS['economy']['name']} {player.economy_level}.", player_id=building.owner)
         elif item.kind == "tech" and item.target == "military":
             player.military_level += 1
-            self._log(f"{player.name} completed {TECHS['military']['name']} {player.military_level}.")
+            self._log(f"{player.name} completed {TECHS['military']['name']} {player.military_level}.", player_id=building.owner)
 
     def queue_contains(self, building: Building, kind: str, target: str) -> bool:
         return any(item.kind == kind and item.target == target for item in building.queue)
@@ -1353,7 +1449,7 @@ class Game:
                 unit.attack_cooldown = 8
                 if resource.hp <= 0:
                     resource.alive = False
-                    self._log(f"{self.players[unit.owner].name} killed a gazelle.")
+                    self._log(f"{self.players[unit.owner].name} killed a gazelle.", player_id=unit.owner)
             return
         rate_multiplier = 1 + 0.15 * self.players[unit.owner].economy_level
         unit.gather_progress += GATHER_RATES[resource.kind] * rate_multiplier * (TICK_MS / 1000)
@@ -1363,7 +1459,7 @@ class Game:
             resource.amount -= collected
             unit.carrying[resource.resource_type] += collected
         if resource.amount <= 0 and resource.kind == "tree":
-            self._log("A tree has been exhausted.")
+            self._log("A tree has been exhausted.", player_id=unit.owner)
         if unit.total_carry() >= unit.carry_capacity or resource.amount <= 0:
             unit.state = "return"
 
@@ -1417,7 +1513,7 @@ class Game:
             self.players[building.owner].pop_cap += building.pop_bonus
             unit.state = "idle"
             unit.build_target = None
-            self._log(f"{self.players[building.owner].name} finished {building.name}.")
+            self._log(f"{self.players[building.owner].name} finished {building.name}.", player_id=building.owner)
 
     def update_attack(self, unit: Unit) -> None:
         if not unit.target:
@@ -1453,7 +1549,7 @@ class Game:
             target_obj.gatherable = False
             unit.state = "idle"
             unit.target = None
-            self._log(f"{self.players[unit.owner].name}'s {unit.name} killed a gazelle.")
+            self._log(f"{self.players[unit.owner].name}'s {unit.name} killed a gazelle.", player_id=unit.owner)
             return
         unit.attack_cooldown = 10
 
@@ -1502,7 +1598,7 @@ class Game:
             if (self.selected_kind, self.selected_id) == ("unit", unit_id):
                 self.selected_kind = None
                 self.selected_id = None
-            self._log(f"{self.players[unit.owner].name}'s {unit.name} died.")
+            self._log(f"{self.players[unit.owner].name}'s {unit.name} died.", player_id=unit.owner)
         dead_buildings = [bid for bid, building in self.buildings.items() if building.hp <= 0]
         for bid in dead_buildings:
             building = self.buildings.pop(bid)
@@ -1511,7 +1607,7 @@ class Game:
             if (self.selected_kind, self.selected_id) == ("building", bid):
                 self.selected_kind = None
                 self.selected_id = None
-            self._log(f"{self.players[building.owner].name}'s {building.name} was destroyed.")
+            self._log(f"{self.players[building.owner].name}'s {building.name} was destroyed.", player_id=building.owner)
         spent = [rid for rid, node in self.resources.items() if node.amount <= 0]
         for rid in spent:
             if (self.selected_kind, self.selected_id) == ("resource", rid):
@@ -1530,7 +1626,7 @@ class Game:
                 alive.append(owner)
         if len(alive) == 1:
             self.winner = alive[0]
-            self._log(f"{self.players[self.winner].name} wins.")
+            self._log_many(f"{self.players[self.winner].name} wins.", range(len(self.players)))
 
     def keep_cursor_visible(self) -> None:
         if self.stdscr is None:
@@ -1710,7 +1806,7 @@ class Game:
         self.draw_sidebar(map_screen_w, sidebar, height)
         self.draw_log(height, width)
         if self.winner is not None:
-            overlay = f"{self.players[self.winner].name} wins. Press q or Esc."
+            overlay = f"{self.players[self.winner].name} wins. Press q."
             self.stdscr.addstr(map_h // 2, max(0, map_screen_w // 2 - len(overlay) // 2), overlay, curses.A_BOLD)
         elif player.ageing:
             text = f"Aging: {AGE_NAMES[player.age + 1]} ({player.ageing.time_left})"
@@ -1804,7 +1900,7 @@ class Game:
             [
                 "",
                 "Keys:",
-                "Arrows move",
+                "Arrows/^B^F^P^N move",
                 "Shift+Arrows fast",
                 "<space> select",
                 "Tab cycle owned",
@@ -1815,7 +1911,7 @@ class Game:
                 "s soldier",
                 "n next age",
                 "t tech",
-                "x clear",
+                "x/Esc clear",
                 "q quit",
             ]
         )
@@ -1849,7 +1945,7 @@ class Game:
     def draw_log(self, height: int, width: int) -> None:
         start = height - LOG_LIMIT - 1
         self.stdscr.hline(start, 0, "-", width)
-        for idx, line in enumerate(self.logs[-LOG_LIMIT:]):
+        for idx, line in enumerate(self.visible_logs()[-LOG_LIMIT:]):
             self.stdscr.addstr(start + 1 + idx, 0, line[: width - 1])
 
 
@@ -2323,6 +2419,9 @@ class SSHOfEmpiresApp:
     def __init__(self, stdscr: curses.window) -> None:
         self.stdscr = stdscr
         self.store = LobbyStore()
+        if hasattr(curses, "set_escdelay"):
+            curses.set_escdelay(CURSES_ESCDELAY_MS)
+        self.stdscr.keypad(True)
 
     def safe_addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
         height, width = self.stdscr.getmaxyx()
@@ -2767,6 +2866,7 @@ class SSHOfEmpiresApp:
             key = self.stdscr.getch()
             if key == -1:
                 continue
+            key = normalize_input_key(self.stdscr, key, TICK_MS)
             if game.build_menu_open:
                 if key == ord("q"):
                     self.store.leave_room(player_id)
@@ -2791,30 +2891,17 @@ class SSHOfEmpiresApp:
                     )
                     game.build_menu_open = False
                 continue
-            if key in (ord("q"), 27):
+            if key == ord("q"):
                 self.store.leave_room(player_id)
                 return
-            if key == curses.KEY_LEFT:
-                game.move_cursor(-1, 0)
-            elif key == curses.KEY_DOWN:
-                game.move_cursor(0, 1)
-            elif key == curses.KEY_UP:
-                game.move_cursor(0, -1)
-            elif key == curses.KEY_RIGHT:
-                game.move_cursor(1, 0)
-            elif key == getattr(curses, "KEY_SLEFT", -1):
-                game.move_cursor(-FAST_SCROLL, 0)
-            elif key == getattr(curses, "KEY_SF", -1):
-                game.move_cursor(0, FAST_SCROLL)
-            elif key == getattr(curses, "KEY_SR", -1):
-                game.move_cursor(0, -FAST_SCROLL)
-            elif key == getattr(curses, "KEY_SRIGHT", -1):
-                game.move_cursor(FAST_SCROLL, 0)
+            movement = movement_delta_for_key(key)
+            if movement is not None:
+                game.move_cursor(*movement)
             elif key in (ord(" "), 10, 13):
                 game.select_at_cursor()
             elif key == 9:
                 game.cycle_selection()
-            elif key == ord("x"):
+            elif key in (ord("x"), 27):
                 game.selected_kind = None
                 game.selected_id = None
                 game.build_menu_open = False

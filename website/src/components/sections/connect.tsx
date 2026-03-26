@@ -17,7 +17,7 @@ export function Connect() {
             </div>
             <div className="font-mono text-xl md:text-2xl text-on-surface">
               <span className="text-secondary">$</span> ssh
-              play.sshofempires.com{" "}
+              -p 2222 -t player@ssh-of-empires.juanmartinez.xyz{" "}
               <span className="terminal-cursor text-primary" />
             </div>
           </div>
