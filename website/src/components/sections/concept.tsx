@@ -1,33 +1,40 @@
 import { ScrollReveal } from "@/components/effects/scroll-reveal";
+import { BattlefieldPreview } from "@/components/ui/battlefield-preview";
 
 export function Concept() {
   return (
-    <section className="py-24 bg-surface">
+    <section className="py-24 bg-surface" id="game">
       <div className="container mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <div>
             <ScrollReveal>
               <h2 className="text-xs font-label uppercase tracking-[0.4em] text-primary-container mb-4">
-                &gt; [ ARCHITECTURE ]
+                &gt; [ GAMEPLAY ]
               </h2>
               <h3 className="text-4xl md:text-5xl font-headline font-bold mb-8 uppercase leading-tight">
-                The Strategy is <br />
-                In The Syntax
+                A Real RTS <br />
+                With Terminal Controls
               </h3>
             </ScrollReveal>
             <ScrollReveal delay={150}>
               <div className="space-y-6 text-on-surface-variant font-body text-lg leading-relaxed">
                 <p>
-                  SSH of Empires strips away the distractions of modern graphics
-                  to focus on the core of strategy:{" "}
-                  <span className="text-on-surface font-bold">
-                    Intelligence, Speed, and Execution.
-                  </span>
+                  SSH of Empires keeps the classic RTS loop intact: scout the map,
+                  gather resources, build houses before you get population capped,
+                  place drop-off buildings efficiently, and pressure the enemy
+                  before they outscale you.
                 </p>
                 <p>
-                  Every villager assigned, every unit trained, and every wall built
-                  is a command sent directly to the core engine. You are not just a
-                  player; you are the system operator of a rising civilization.
+                  The interface is compact and direct, keeping the focus on{" "}
+                  <span className="text-on-surface font-bold">
+                    economy, scouting, timing, and battles
+                  </span>{" "}
+                  instead of menus and overhead.
+                </p>
+                <p>
+                  It still feels like a real Age-inspired RTS: expand your base,
+                  move through the ages, and pressure the enemy before they
+                  outscale you.
                 </p>
               </div>
             </ScrollReveal>
@@ -35,18 +42,18 @@ export function Concept() {
               <div className="mt-12 grid grid-cols-2 gap-8">
                 <div className="border-t border-outline-variant/20 pt-4">
                   <span className="text-3xl font-headline text-primary block mb-2">
-                    0.0ms
+                    Stone / Tool / Bronze
                   </span>
                   <span className="text-[10px] font-label uppercase tracking-widest text-on-surface-variant leading-none">
-                    Input Latency
+                    Age Progression
                   </span>
                 </div>
                 <div className="border-t border-outline-variant/20 pt-4">
                   <span className="text-3xl font-headline text-primary block mb-2">
-                    100%
+                    Human + Agent Play
                   </span>
                   <span className="text-[10px] font-label uppercase tracking-widest text-on-surface-variant leading-none">
-                    Scriptable UI
+                    Shared Live Interface
                   </span>
                 </div>
               </div>
@@ -54,38 +61,7 @@ export function Concept() {
           </div>
 
           <ScrollReveal direction="right" delay={200}>
-            <div className="relative">
-              <div className="bg-surface-container-lowest border border-outline-variant/20 p-2 shadow-2xl">
-                <div className="bg-surface-container-low p-4 flex items-center justify-between border-b border-outline-variant/20">
-                  <div className="flex gap-2">
-                    <div className="w-2 h-2 bg-error rounded-full" />
-                    <div className="w-2 h-2 bg-tertiary rounded-full" />
-                    <div className="w-2 h-2 bg-secondary rounded-full" />
-                  </div>
-                  <span className="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">
-                    MAP_RENDER_01.EXE
-                  </span>
-                </div>
-                <div className="p-6 aspect-square overflow-hidden bg-black flex items-center justify-center">
-                  <pre className="text-[8px] leading-[1.1] text-secondary font-mono whitespace-pre">
-                    {`                ~~~~~~~~~~~~~~~~~~~~~~~
-                ~~~~~~~~~~~~  ... ~~~~~~~
-               ~~~~~~~~~~   .::::.  ~~~~~
-               ~~~~~~     .::::::::.  ~~~~
-               ~~~~      ::::::::::::  ~~~
-               ~~~      ::::::::::::::  ~~
-               ~~~      ::::::::::::::  ~~
-               ~~~      ::::::::::::::  ~~
-               ~~~~      ::::::::::::  ~~~
-               ~~~~~~     ::::::::::  ~~~~
-               ~~~~~~~~~   '::::::'  ~~~~~
-               ~~~~~~~~~~~~  '::'  ~~~~~~~
-                ~~~~~~~~~~~~~~~~~~~~~~~
-                 [ CASTLE_FOUNDATION ]`}
-                  </pre>
-                </div>
-              </div>
-            </div>
+            <BattlefieldPreview />
           </ScrollReveal>
         </div>
       </div>

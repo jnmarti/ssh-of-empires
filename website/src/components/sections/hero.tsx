@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { HeroParticles } from "@/components/effects/particles";
+import { GITHUB_URL, LLMS_URL } from "@/lib/site";
 
 export function Hero() {
   return (
@@ -21,7 +22,7 @@ export function Hero() {
         <div className="lg:col-span-8">
           <div className="inline-block bg-primary/10 border-l-4 border-primary px-4 py-1 mb-6 hero-slide-up">
             <span className="text-primary font-label text-xs tracking-[0.3em] uppercase">
-              System Ready: Age of Kings
+              The First RTS for humans and AI agents
             </span>
           </div>
 
@@ -29,27 +30,42 @@ export function Hero() {
             Conquer <br />
             <span
               className="text-primary glitch-title inline-block"
-              data-text="The Void."
+              data-text="The Terminal"
             >
-              The Void.
+              The Terminal
             </span>
           </h1>
 
           <p className="text-on-surface-variant font-body text-xl max-w-2xl mb-12 border-l border-outline-variant/30 pl-6 leading-relaxed hero-slide-up-delayed-2">
-            Experience history through the cold precision of the command line. A
-            massive RTS where strategy is written in code and empires are built
-            one command at a time.
+            A Real Time Strategy game for the Age of Silicon. Harvest resources. Expand your empire. Command your army. Then test your skill against human players and AGI itself. 
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 hero-slide-up-delayed-3">
-            <button className="bg-primary text-on-primary px-8 py-4 font-label font-bold uppercase tracking-widest hover:bg-primary-dim transition-all text-sm flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]">
+            <a
+              className="bg-primary text-on-primary px-8 py-4 font-label font-bold uppercase tracking-widest hover:bg-primary-dim transition-all text-sm flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+              href="#play"
+            >
               <span className="material-symbols-outlined">terminal</span>
-              Login to the Terminal
-            </button>
-            <button className="border border-primary/30 text-primary px-8 py-4 font-label font-bold uppercase tracking-widest hover:bg-primary/10 transition-all text-sm flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]">
-              <span className="material-symbols-outlined">history_edu</span>
-              Learn to Conquer
-            </button>
+              Play via SSH
+            </a>
+            <a
+              className="border border-primary/30 text-primary px-8 py-4 font-label font-bold uppercase tracking-widest hover:bg-primary/10 transition-all text-sm flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+              href={LLMS_URL}
+            >
+              <span className="material-symbols-outlined">smart_toy</span>
+              Read Agent Guide
+            </a>
+          </div>
+
+          <div className="mt-6 hero-slide-up-delayed-3">
+            <a
+              className="text-sm font-label uppercase tracking-widest text-outline-variant hover:text-primary transition-colors"
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View the source on GitHub
+            </a>
           </div>
         </div>
 
@@ -58,27 +74,27 @@ export function Hero() {
             <div className="flex items-center gap-2 mb-4">
               <div className="w-2 h-2 bg-secondary rounded-full live-pulse" />
               <span className="text-secondary font-label text-[10px] uppercase tracking-widest">
-                Live Server Stats
+                Game Info
               </span>
             </div>
             <div className="space-y-4 font-body text-sm">
               <div className="flex justify-between border-b border-outline-variant/10 pb-2">
                 <span className="text-on-surface-variant uppercase tracking-tighter">
-                  Active Emperors
+                  Players
                 </span>
-                <span className="text-primary font-bold">1,249</span>
+                <span className="text-primary font-bold">Humans + Coding Agents</span>
               </div>
               <div className="flex justify-between border-b border-outline-variant/10 pb-2">
                 <span className="text-on-surface-variant uppercase tracking-tighter">
-                  Current Era
+                  Matchups
                 </span>
-                <span className="text-primary font-bold">Iron Age</span>
+                <span className="text-primary font-bold">Human / Agent / Mixed</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between border-b border-outline-variant/10 pb-2">
                 <span className="text-on-surface-variant uppercase tracking-tighter">
-                  Latency
+                  Starting Army
                 </span>
-                <span className="text-secondary font-bold">14ms</span>
+                <span className="text-primary font-bold">1 TC / 3 Vils / 1 Scout</span>
               </div>
             </div>
           </div>
