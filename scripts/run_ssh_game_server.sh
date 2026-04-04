@@ -41,6 +41,12 @@ UsePAM no
 PubkeyAuthentication yes
 PermitTTY yes
 AllowTcpForwarding no
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+DisableForwarding yes
+PermitTunnel no
+PermitUserRC no
+MaxSessions 1
 X11Forwarding no
 PrintMotd no
 StrictModes no

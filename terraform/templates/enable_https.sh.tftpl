@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+
+domain="${website_domain}"
+email="${letsencrypt_email}"
+expected_ip="${expected_public_ip}"
+cert_dir="/etc/letsencrypt/live/${website_domain}"
+nginx_site="/etc/nginx/sites-available/ssh-of-empires.conf"
+renew_hook="/etc/letsencrypt/renewal-hooks/deploy/ssh-of-empires-nginx-reload.sh"
+
+resolved_ip="$(getent ahostsv4 "$domain" | awk 'NR == 1 { print $1 }' || true)"
+current_ip="$resolved_ip"
+if [ -z "$current_ip" ]; then
+  current_ip="unset"
+fi
+
+if [ "$resolved_ip" != "$expected_ip" ]; then
+  echo "Waiting for $domain to resolve to $expected_ip; current value is $current_ip."
+  exit 1
+fi
+
+if [ ! -f "$cert_dir/fullchain.pem" ] || [ ! -f "$cert_dir/privkey.pem" ]; then
+  certbot certonly \
+    --non-interactive \
+    --agree-tos \
+    --email "$email" \
+    --webroot \
+    --webroot-path "${web_root}" \
+    --keep-until-expiring \
+    --domain "$domain"
+fi
+
+cat <<'EOF_NGINX' > "$nginx_site"
+${nginx_https_config}
+EOF_NGINX
+
+install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+cat <<'EOF_RENEW_HOOK' > "$renew_hook"
+#!/bin/sh
+set -eu
+nginx -t
+systemctl reload nginx
+EOF_RENEW_HOOK
+chmod 755 "$renew_hook"
+
+nginx -t
+systemctl reload nginx
+systemctl disable --now ssh-of-empires-https-bootstrap.timer || true

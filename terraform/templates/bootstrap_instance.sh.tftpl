@@ -1,0 +1,116 @@
+#!/bin/sh
+set -eu
+
+exec >>/var/log/ssh-of-empires-bootstrap.log 2>&1
+
+retry() {
+  attempt=1
+  while :; do
+    if "$@"; then
+      return 0
+    fi
+    if [ "$attempt" -ge 5 ]; then
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 5
+  done
+}
+
+export DEBIAN_FRONTEND=noninteractive
+
+retry apt-get update
+retry apt-get install -y ca-certificates curl nginx python3%{ if enable_https } certbot%{ endif }
+
+install -d -m 0755 "${game_dir}"
+rm -rf "${web_root}"
+install -d -m 0755 "${web_root}"
+
+curl --fail --show-error --silent --location --retry 5 --retry-delay 2 "${game_source_url}" -o "${game_dir}/aoe_terminal.py"
+curl --fail --show-error --silent --location --retry 5 --retry-delay 2 "${ssh_host_private_url}" -o /etc/ssh/ssh_host_ed25519_key
+curl --fail --show-error --silent --location --retry 5 --retry-delay 2 "${ssh_host_public_url}" -o /etc/ssh/ssh_host_ed25519_key.pub
+curl --fail --show-error --silent --location --retry 5 --retry-delay 2 "${site_bundle_url}" -o /tmp/ssh-of-empires-site.tgz
+tar -xzf /tmp/ssh-of-empires-site.tgz -C "${web_root}"
+rm -f /tmp/ssh-of-empires-site.tgz
+
+cat <<'EOF_GAME_SHELL' > "${game_shell_path}"
+${game_shell}
+EOF_GAME_SHELL
+
+cat <<'EOF_SSHD' > /etc/ssh/sshd_config.d/90-ssh-of-empires.conf
+${sshd_config}
+EOF_SSHD
+
+cat <<'EOF_NGINX' > /etc/nginx/sites-available/ssh-of-empires.conf
+${nginx_http_config}
+EOF_NGINX
+
+%{ if enable_https }
+cat <<'EOF_ENABLE_HTTPS' > /usr/local/bin/ssh-of-empires-enable-https
+${enable_https_script}
+EOF_ENABLE_HTTPS
+
+cat <<'EOF_HTTPS_SERVICE' > /etc/systemd/system/ssh-of-empires-https-bootstrap.service
+[Unit]
+Description=Obtain and enable HTTPS for SSH of Empires
+After=network-online.target nginx.service
+Wants=network-online.target nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ssh-of-empires-enable-https
+EOF_HTTPS_SERVICE
+
+cat <<'EOF_HTTPS_TIMER' > /etc/systemd/system/ssh-of-empires-https-bootstrap.timer
+[Unit]
+Description=Retry HTTPS bootstrap for SSH of Empires
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=5m
+Unit=ssh-of-empires-https-bootstrap.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF_HTTPS_TIMER
+%{ endif }
+
+chmod 755 "${game_dir}/aoe_terminal.py" "${game_shell_path}"
+chmod 600 /etc/ssh/ssh_host_ed25519_key
+chmod 644 /etc/ssh/ssh_host_ed25519_key.pub
+chown root:root "${game_dir}/aoe_terminal.py" "${game_shell_path}"
+chown root:root /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key.pub
+%{ if enable_https }
+chmod 755 /usr/local/bin/ssh-of-empires-enable-https
+%{ endif }
+
+id -u "${player_username}" >/dev/null 2>&1 || useradd -m -s /bin/bash "${player_username}"
+usermod -s /bin/bash "${player_username}"
+passwd -d "${player_username}" || true
+passwd -u "${player_username}" || true
+rm -rf "/home/${player_username}/.ssh"
+
+ln -sfn /etc/nginx/sites-available/ssh-of-empires.conf /etc/nginx/sites-enabled/ssh-of-empires.conf
+rm -f /etc/nginx/sites-enabled/default
+
+install -d -m 0755 /run/sshd
+/usr/sbin/sshd -t
+nginx -t
+
+if systemctl list-unit-files ssh.socket >/dev/null 2>&1; then
+  systemctl disable --now ssh.socket || true
+fi
+
+systemctl enable ssh || true
+systemctl restart ssh
+systemctl enable nginx
+systemctl restart nginx
+%{ if enable_https }
+systemctl daemon-reload
+if systemctl list-unit-files certbot.timer >/dev/null 2>&1; then
+  systemctl enable --now certbot.timer || true
+fi
+systemctl enable --now ssh-of-empires-https-bootstrap.timer
+systemctl start ssh-of-empires-https-bootstrap.service || true
+%{ endif }

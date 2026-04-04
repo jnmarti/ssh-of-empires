@@ -1,10 +1,24 @@
+HostKey ${ssh_host_key_path}
+
 Port 22
 Port ${game_port}
 
-Match User ${player_username}
-    AuthenticationMethods publickey
-    PasswordAuthentication no
+Match LocalPort ${game_port}
+    AllowUsers ${player_username}
+
+Match User ${player_username} LocalPort ${game_port}
+    AuthenticationMethods none
+    PubkeyAuthentication no
+    PasswordAuthentication yes
+    PermitEmptyPasswords yes
+    KbdInteractiveAuthentication no
     PermitTTY yes
+    PermitUserRC no
     X11Forwarding no
     AllowTcpForwarding no
+    AllowAgentForwarding no
+    AllowStreamLocalForwarding no
+    DisableForwarding yes
+    PermitTunnel no
+    MaxSessions 1
     ForceCommand ${game_shell_path}

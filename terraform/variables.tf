@@ -28,12 +28,6 @@ variable "bundle_id" {
   default     = "nano_3_0"
 }
 
-variable "admin_username" {
-  description = "Initial SSH username for the selected blueprint."
-  type        = string
-  default     = "ubuntu"
-}
-
 variable "player_username" {
   description = "SSH username that will be forced into the game."
   type        = string
@@ -47,21 +41,9 @@ variable "game_port" {
 }
 
 variable "website_domain" {
-  description = "Domain name served by nginx on port 80."
+  description = "Domain name served by nginx for the public website."
   type        = string
   default     = "ssh-of-empires.juanmartinez.xyz"
-}
-
-variable "public_key_path" {
-  description = "Path to the public key that should be authorized for both admin and player logins."
-  type        = string
-  default     = "~/.ssh/id_ed25519.pub"
-}
-
-variable "private_key_path" {
-  description = "Path to the private key matching public_key_path, used by Terraform for bootstrap SSH."
-  type        = string
-  default     = "~/.ssh/id_ed25519"
 }
 
 variable "remote_game_dir" {
@@ -76,14 +58,32 @@ variable "remote_web_root" {
   default     = "/var/www/ssh-of-empires"
 }
 
-variable "ssh_allowed_cidrs" {
-  description = "CIDR ranges allowed to connect to ports 22 and 2222."
+variable "game_allowed_cidrs" {
+  description = "CIDR ranges allowed to connect to the public game SSH port."
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
 
 variable "web_allowed_cidrs" {
-  description = "CIDR ranges allowed to connect to the website on port 80."
+  description = "CIDR ranges allowed to connect to the website on ports 80 and 443."
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+variable "enable_https" {
+  description = "Whether to obtain a Let's Encrypt certificate and serve the website on HTTPS."
+  type        = bool
+  default     = false
+}
+
+variable "letsencrypt_email" {
+  description = "Email address used for Let's Encrypt registration and expiration notices."
+  type        = string
+  default     = ""
+}
+
+variable "artifact_url_ttl_seconds" {
+  description = "Lifetime of the presigned artifact download URLs used by first-boot bootstrap."
+  type        = number
+  default     = 86400
 }
