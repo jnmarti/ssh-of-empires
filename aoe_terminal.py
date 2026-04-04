@@ -224,6 +224,122 @@ TECHS = {
     },
 }
 
+PAIR_GRASS = 1
+PAIR_FOG = 2
+PAIR_UNSEEN = 3
+PAIR_TREE = 4
+PAIR_BERRY = 5
+PAIR_GAZELLE = 6
+PAIR_GOLD = 7
+PAIR_STONE = 8
+PAIR_PLAYER_1 = 9
+PAIR_PLAYER_2 = 10
+PAIR_PLAYER_3 = 11
+PAIR_PANEL = 12
+PAIR_PANEL_TITLE = 13
+PAIR_PANEL_MUTED = 14
+PAIR_ALERT = 15
+PAIR_CURSOR = 16
+PAIR_TEXT = 17
+PAIR_FOOD = 18
+PAIR_WOOD = 19
+PAIR_GOLD_TEXT = 20
+PAIR_STONE_TEXT = 21
+PAIR_SUCCESS = 22
+PAIR_PROMPT = 23
+PAIR_TREE_MEMORY = 24
+PAIR_BERRY_MEMORY = 25
+PAIR_GAZELLE_MEMORY = 26
+PAIR_GOLD_MEMORY = 27
+PAIR_STONE_MEMORY = 28
+
+EXTENDED_THEME_PAIRS = {
+    PAIR_GRASS: (120, 22),
+    PAIR_FOG: (242, 236),
+    PAIR_UNSEEN: (235, 233),
+    PAIR_TREE: (157, 22),
+    PAIR_BERRY: (218, 22),
+    PAIR_GAZELLE: (223, 22),
+    PAIR_GOLD: (221, 22),
+    PAIR_STONE: (250, 22),
+    PAIR_PLAYER_1: (51, 22),
+    PAIR_PLAYER_2: (210, 22),
+    PAIR_PLAYER_3: (159, 22),
+    PAIR_PANEL: (110, -1),
+    PAIR_PANEL_TITLE: (229, -1),
+    PAIR_PANEL_MUTED: (244, -1),
+    PAIR_ALERT: (215, -1),
+    PAIR_CURSOR: (232, 229),
+    PAIR_TEXT: (252, -1),
+    PAIR_FOOD: (217, -1),
+    PAIR_WOOD: (151, -1),
+    PAIR_GOLD_TEXT: (221, -1),
+    PAIR_STONE_TEXT: (250, -1),
+    PAIR_SUCCESS: (121, -1),
+    PAIR_PROMPT: (117, -1),
+    PAIR_TREE_MEMORY: (108, -1),
+    PAIR_BERRY_MEMORY: (181, -1),
+    PAIR_GAZELLE_MEMORY: (187, -1),
+    PAIR_GOLD_MEMORY: (186, -1),
+    PAIR_STONE_MEMORY: (245, -1),
+}
+
+BASIC_THEME_PAIRS = {
+    PAIR_GRASS: (curses.COLOR_GREEN, -1),
+    PAIR_FOG: (curses.COLOR_BLUE, -1),
+    PAIR_UNSEEN: (curses.COLOR_BLACK, -1),
+    PAIR_TREE: (curses.COLOR_GREEN, -1),
+    PAIR_BERRY: (curses.COLOR_RED, -1),
+    PAIR_GAZELLE: (curses.COLOR_YELLOW, -1),
+    PAIR_GOLD: (curses.COLOR_YELLOW, -1),
+    PAIR_STONE: (curses.COLOR_WHITE, -1),
+    PAIR_PLAYER_1: (curses.COLOR_BLUE, -1),
+    PAIR_PLAYER_2: (curses.COLOR_RED, -1),
+    PAIR_PLAYER_3: (curses.COLOR_CYAN, -1),
+    PAIR_PANEL: (curses.COLOR_CYAN, -1),
+    PAIR_PANEL_TITLE: (curses.COLOR_YELLOW, -1),
+    PAIR_PANEL_MUTED: (curses.COLOR_WHITE, -1),
+    PAIR_ALERT: (curses.COLOR_YELLOW, -1),
+    PAIR_CURSOR: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_TEXT: (curses.COLOR_WHITE, -1),
+    PAIR_FOOD: (curses.COLOR_RED, -1),
+    PAIR_WOOD: (curses.COLOR_GREEN, -1),
+    PAIR_GOLD_TEXT: (curses.COLOR_YELLOW, -1),
+    PAIR_STONE_TEXT: (curses.COLOR_WHITE, -1),
+    PAIR_SUCCESS: (curses.COLOR_GREEN, -1),
+    PAIR_PROMPT: (curses.COLOR_CYAN, -1),
+    PAIR_TREE_MEMORY: (curses.COLOR_GREEN, -1),
+    PAIR_BERRY_MEMORY: (curses.COLOR_RED, -1),
+    PAIR_GAZELLE_MEMORY: (curses.COLOR_YELLOW, -1),
+    PAIR_GOLD_MEMORY: (curses.COLOR_YELLOW, -1),
+    PAIR_STONE_MEMORY: (curses.COLOR_WHITE, -1),
+}
+
+
+def initialize_terminal_theme() -> str:
+    if not curses.has_colors():
+        return "mono"
+    curses.start_color()
+    try:
+        curses.use_default_colors()
+    except curses.error:
+        pass
+    pair_limit = getattr(curses, "COLOR_PAIRS", 0)
+    supports_extended = getattr(curses, "COLORS", 0) >= 256 and pair_limit > max(EXTENDED_THEME_PAIRS)
+    pairs = EXTENDED_THEME_PAIRS if supports_extended else BASIC_THEME_PAIRS
+    for pair_id, (fg, bg) in pairs.items():
+        try:
+            curses.init_pair(pair_id, fg, bg)
+        except curses.error:
+            continue
+    return "extended" if supports_extended else "basic"
+
+
+def theme_color(pair_id: int) -> int:
+    if not curses.has_colors():
+        return 0
+    return curses.color_pair(pair_id)
+
 
 @dataclass
 class ResourceNode:
@@ -377,6 +493,7 @@ class PlayerState:
     pop_cap: int = 4
     explored: List[List[bool]] = field(default_factory=list)
     visible: Set[Tuple[int, int]] = field(default_factory=set)
+    discovered_resources: Set[int] = field(default_factory=set)
     logs_prefix: str = ""
 
     def resource_dict(self) -> Dict[str, int]:
@@ -435,6 +552,7 @@ class Game:
         self.running = True
         self.tick = 0
         self.winner: Optional[int] = None
+        self.theme_mode = "mono"
         self.ai_memory = {"last_house_tick": -999, "last_attack_tick": -999} if enable_ai else {}
         if init_world:
             self._init_world()
@@ -478,6 +596,137 @@ class Game:
             width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
         return width
 
+    def safe_addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
+        if self.stdscr is None:
+            return
+        height, width = self.stdscr.getmaxyx()
+        if y < 0 or y >= height or x >= width:
+            return
+        available = max(0, width - x)
+        if available <= 0:
+            return
+        try:
+            self.stdscr.addstr(y, x, text[:available], attr)
+        except curses.error:
+            pass
+
+    def theme_attr(self, pair_id: int, extra: int = 0) -> int:
+        return theme_color(pair_id) | extra
+
+    def draw_box(
+        self,
+        y: int,
+        x: int,
+        h: int,
+        w: int,
+        title: Optional[str] = None,
+        border_attr: int = 0,
+        title_attr: int = 0,
+        fill_attr: int = 0,
+    ) -> None:
+        if h < 3 or w < 4:
+            return
+        self.safe_addstr(y, x, "╔" + ("═" * (w - 2)) + "╗", border_attr)
+        fill = " " * max(0, w - 2)
+        for row in range(1, h - 1):
+            self.safe_addstr(y + row, x, "║", border_attr)
+            if fill_attr:
+                self.safe_addstr(y + row, x + 1, fill, fill_attr)
+            self.safe_addstr(y + row, x + w - 1, "║", border_attr)
+        self.safe_addstr(y + h - 1, x, "╚" + ("═" * (w - 2)) + "╝", border_attr)
+        if title:
+            label = f" {title[: max(0, w - 4)]} "
+            start = x + max(1, (w - len(label)) // 2)
+            self.safe_addstr(y, start, label[: max(0, w - 2)], title_attr or border_attr)
+
+    @staticmethod
+    def meter(current: int, total: int, width: int) -> str:
+        width = max(1, width)
+        if total <= 0:
+            return "░" * width
+        filled = max(0, min(width, int(round((current / total) * width))))
+        return ("█" * filled) + ("░" * (width - filled))
+
+    def wrap_panel_lines(self, lines: List[str], width: int) -> List[str]:
+        wrapped: List[str] = []
+        for line in lines:
+            wrapped.extend(textwrap.wrap(line, max(8, width)) or [""])
+        return wrapped
+
+    def describe_target_ref(self, target: Optional[Tuple[str, int]]) -> str:
+        if not target:
+            return "None"
+        kind, target_id = target
+        if kind == "resource":
+            node = self.resources.get(target_id)
+            return node.visible_name() if node else "resource"
+        if kind == "unit":
+            unit = self.units.get(target_id)
+            return f"{self.owner_label(unit.owner)} {unit.name}" if unit else "unit"
+        if kind == "building":
+            building = self.buildings.get(target_id)
+            return f"{self.owner_label(building.owner)} {building.name}" if building else "building"
+        return kind
+
+    def production_total_time(self, building: Building, item: ProductionItem) -> int:
+        if item.kind == "unit" and item.target in UNIT_STATS:
+            return int(UNIT_STATS[item.target]["train_time"])
+        owner = self.players[building.owner]
+        if item.kind == "tech" and item.target == "economy":
+            return int(TECHS["economy"]["time"][owner.economy_level])
+        if item.kind == "tech" and item.target == "military":
+            return int(TECHS["military"]["time"][owner.military_level])
+        return max(1, item.time_left)
+
+    def remembered_resource_attr(self, kind: str) -> int:
+        if kind == "tree":
+            return self.theme_attr(PAIR_TREE_MEMORY, curses.A_DIM)
+        if kind == "berries":
+            return self.theme_attr(PAIR_BERRY_MEMORY, curses.A_DIM)
+        if kind == "gold":
+            return self.theme_attr(PAIR_GOLD_MEMORY, curses.A_DIM)
+        if kind == "stone":
+            return self.theme_attr(PAIR_STONE_MEMORY, curses.A_DIM)
+        return self.theme_attr(PAIR_GAZELLE_MEMORY, curses.A_DIM)
+
+    def selected_panel_lines(self, obj: object, width: int) -> List[str]:
+        meter_w = max(8, min(14, width - 10))
+        if obj is None:
+            return ["No unit or building selected."]
+        lines: List[str] = []
+        if isinstance(obj, Unit):
+            lines.append(f"{obj.name} · {self.owner_label(obj.owner)}")
+            lines.append(f"State {obj.state} · ATK {obj.attack} · VIS {obj.vision}")
+            lines.append(f"HP {obj.hp}/{obj.max_hp} {self.meter(obj.hp, obj.max_hp, meter_w)}")
+            if obj.kind == "villager":
+                carry_bits = [f"{kind[0].upper()}{amount}" for kind, amount in obj.carrying.items() if amount]
+                carry_text = " ".join(carry_bits) if carry_bits else "empty"
+                lines.append(f"Carry {carry_text} / {obj.carry_capacity}")
+            if obj.target:
+                lines.append(f"Target {self.describe_target_ref(obj.target)}")
+            elif obj.destination:
+                lines.append(f"Move to {obj.destination[0]},{obj.destination[1]}")
+        elif isinstance(obj, Building):
+            lines.append(f"{obj.name} · {self.owner_label(obj.owner)}")
+            lines.append(f"HP {obj.hp}/{obj.max_hp} {self.meter(obj.hp, obj.max_hp, meter_w)}")
+            if not obj.complete:
+                lines.append(f"Build {obj.build_progress}/{obj.build_time} {self.meter(obj.build_progress, obj.build_time, meter_w)}")
+            if obj.queue:
+                current = obj.queue[0]
+                target = current.target or current.kind
+                total = self.production_total_time(obj, current)
+                lines.append(f"Queue {target} ({current.time_left}t)")
+                lines.append(f"Prod {self.meter(total - current.time_left, total, meter_w)}")
+        elif isinstance(obj, ResourceNode):
+            lines.append(obj.name)
+            if obj.kind == "gazelle" and obj.alive:
+                lines.append(f"HP {obj.hp} · Food {obj.amount}")
+            elif obj.kind == "gazelle" and not obj.gatherable:
+                lines.append("No usable food remains.")
+            else:
+                lines.append(f"Remaining {obj.amount}")
+        return self.wrap_panel_lines(lines, width)
+
     def cell_text(self, glyph: str) -> str:
         width = self.glyph_display_width(glyph)
         if width >= TILE_WIDTH:
@@ -505,20 +754,11 @@ class Game:
         if hasattr(curses, "set_escdelay"):
             curses.set_escdelay(CURSES_ESCDELAY_MS)
         self.stdscr.keypad(True)
-        if curses.has_colors():
-            curses.start_color()
-            curses.use_default_colors()
-            curses.init_pair(1, curses.COLOR_GREEN, -1)
-            curses.init_pair(2, curses.COLOR_RED, -1)
-            curses.init_pair(3, curses.COLOR_YELLOW, -1)
-            curses.init_pair(4, curses.COLOR_BLUE, -1)
-            curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_BLUE)
-            curses.init_pair(6, curses.COLOR_WHITE, -1)
-            curses.init_pair(7, curses.COLOR_CYAN, -1)
+        self.theme_mode = initialize_terminal_theme()
 
     def owner_color_pair(self, owner: int) -> int:
-        palette = [4, 2, 7]
-        return curses.color_pair(palette[owner % len(palette)])
+        palette = [PAIR_PLAYER_1, PAIR_PLAYER_2, PAIR_PLAYER_3]
+        return self.theme_attr(palette[owner % len(palette)])
 
     def serialize_state(self) -> str:
         return json.dumps(
@@ -553,6 +793,7 @@ class Game:
                         ),
                         "pop_cap": player.pop_cap,
                         "explored": player.explored,
+                        "discovered_resources": sorted(player.discovered_resources),
                     }
                     for player in self.players
                 ],
@@ -647,6 +888,7 @@ class Game:
                 ),
                 pop_cap=int(item["pop_cap"]),
                 explored=item["explored"],
+                discovered_resources={int(rid) for rid in item.get("discovered_resources", [])},
             )
             self.players.append(player)
         self.player_logs = [[] for _ in self.players]
@@ -862,6 +1104,12 @@ class Game:
                 return rid, node
         return None
 
+    def resource_memory_at(self, owner: int, x: int, y: int) -> Optional[Tuple[int, ResourceNode]]:
+        resource = self.resource_at(x, y)
+        if resource and resource[0] in self.players[owner].discovered_resources:
+            return resource
+        return None
+
     def unit_at(self, x: int, y: int) -> Optional[Unit]:
         for unit in self.units.values():
             if unit.x == x and unit.y == y:
@@ -884,6 +1132,9 @@ class Game:
     def player_population(self, owner: int) -> int:
         return sum(1 for unit in self.units.values() if unit.owner == owner)
 
+    def tile_visible_to(self, owner: int, x: int, y: int) -> bool:
+        return (x, y) in self.players[owner].visible
+
     def reveal_visibility(self) -> None:
         for player in self.players:
             player.visible = set()
@@ -900,6 +1151,20 @@ class Game:
                 if abs(x - cx) + abs(y - cy) <= radius + VISION_PADDING:
                     player.visible.add((x, y))
                     player.explored[y][x] = True
+                    resource = self.resource_at(x, y)
+                    if resource:
+                        player.discovered_resources.add(resource[0])
+
+    def sanitize_selection_visibility(self) -> None:
+        selected = self.get_selected()
+        if not isinstance(selected, Unit):
+            return
+        if selected.owner == self.local_player_id:
+            return
+        if self.tile_visible_to(self.local_player_id, selected.x, selected.y):
+            return
+        self.selected_kind = None
+        self.selected_id = None
 
     def run(self) -> None:
         if self.stdscr is None:
@@ -976,21 +1241,25 @@ class Game:
         self._log("Build menu: 1 House, 2 Lumber Camp, 3 Mill, 4 Barracks.")
 
     def select_at_cursor(self) -> None:
+        pos = (self.cursor_x, self.cursor_y)
+        visible = self.current_player().visible
         unit = self.unit_at(self.cursor_x, self.cursor_y)
-        if unit:
+        if unit and (unit.owner == self.local_player_id or pos in visible):
             self.selected_kind = "unit"
             self.selected_id = unit.id
             self.build_menu_open = False
             self._log(f"Selected {unit.name}.")
             return
         building = self.building_at(self.cursor_x, self.cursor_y)
-        if building:
+        if building and (building.owner == self.local_player_id or pos in visible):
             self.selected_kind = "building"
             self.selected_id = building.id
             self.build_menu_open = False
             self._log(f"Selected {building.name}.")
             return
         resource = self.resource_at(self.cursor_x, self.cursor_y)
+        if resource and resource[0] not in self.current_player().discovered_resources and pos not in visible:
+            resource = None
         if resource:
             rid, node = resource
             self.selected_kind = "resource"
@@ -1047,7 +1316,7 @@ class Game:
         tx = self.cursor_x if target_x is None else target_x
         ty = self.cursor_y if target_y is None else target_y
         enemy_unit = self.unit_at(tx, ty)
-        if enemy_unit and enemy_unit.owner != unit.owner:
+        if enemy_unit and enemy_unit.owner != unit.owner and self.tile_visible_to(unit.owner, tx, ty):
             unit.state = "attack"
             unit.target = ("unit", enemy_unit.id)
             unit.destination = None
@@ -1353,6 +1622,7 @@ class Game:
         self.update_ai()
         self.cleanup_destroyed()
         self.reveal_visibility()
+        self.sanitize_selection_visibility()
         self.check_victory()
         self.keep_cursor_visible()
 
@@ -1792,30 +2062,68 @@ class Game:
         self.stdscr.erase()
         height, width = self.stdscr.getmaxyx()
         if height < 22 or width < 90:
-            self.stdscr.addstr(0, 0, "Resize terminal to at least 90x22.")
+            self.safe_addstr(0, 0, "Resize terminal to at least 90x22.", self.theme_attr(PAIR_ALERT, curses.A_BOLD))
             self.stdscr.refresh()
             return
-        sidebar = 31
-        map_w = max(20, (width - sidebar) // TILE_WIDTH)
-        map_h = height - 9
-        map_screen_w = map_w * TILE_WIDTH
+        log_h = LOG_LIMIT + 2
+        content_h = height - log_h
+        sidebar_w = 36
+        max_map_panel_w = max(24, width - sidebar_w)
+        map_w = max(20, (max_map_panel_w - 2) // TILE_WIDTH)
+        map_panel_w = min(max_map_panel_w, map_w * TILE_WIDTH + 2)
+        sidebar_x = map_panel_w
+        sidebar_w = width - sidebar_x
+        map_h = max(8, content_h - 2)
         player = self.current_player()
         self.camera_x = min(self.camera_x, max(0, MAP_WIDTH - map_w))
         self.camera_y = min(self.camera_y, max(0, MAP_HEIGHT - map_h))
-        self.draw_map(map_w, map_h)
-        self.draw_sidebar(map_screen_w, sidebar, height)
-        self.draw_log(height, width)
+        self.draw_box(
+            0,
+            0,
+            content_h,
+            map_panel_w,
+            "Battlefield",
+            border_attr=self.theme_attr(PAIR_PANEL),
+            title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+            fill_attr=self.theme_attr(PAIR_UNSEEN),
+        )
+        self.draw_box(
+            0,
+            sidebar_x,
+            content_h,
+            sidebar_w,
+            f"{player.name} · {player.civ}",
+            border_attr=self.theme_attr(PAIR_PANEL),
+            title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+        )
+        self.draw_map(1, 1, map_w, map_h)
+        self.draw_sidebar(sidebar_x + 1, 1, sidebar_w - 2, content_h - 2)
+        self.draw_log(content_h, width, log_h)
         if self.winner is not None:
             overlay = f"{self.players[self.winner].name} wins. Press q."
-            self.stdscr.addstr(map_h // 2, max(0, map_screen_w // 2 - len(overlay) // 2), overlay, curses.A_BOLD)
-        elif player.ageing:
-            text = f"Aging: {AGE_NAMES[player.age + 1]} ({player.ageing.time_left})"
-            self.stdscr.addstr(map_h, 0, text)
+            overlay_w = min(map_panel_w - 4, max(28, len(overlay) + 6))
+            overlay_y = max(1, (content_h - 5) // 2)
+            overlay_x = max(2, (map_panel_w - overlay_w) // 2)
+            self.draw_box(
+                overlay_y,
+                overlay_x,
+                5,
+                overlay_w,
+                "Empire Falls",
+                border_attr=self.theme_attr(PAIR_ALERT),
+                title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+                fill_attr=self.theme_attr(PAIR_UNSEEN),
+            )
+            self.safe_addstr(overlay_y + 2, overlay_x + 3, overlay[: max(0, overlay_w - 6)], self.theme_attr(PAIR_ALERT, curses.A_BOLD))
         self.stdscr.refresh()
 
-    def draw_map(self, map_w: int, map_h: int) -> None:
+    def draw_map(self, origin_y: int, origin_x: int, map_w: int, map_h: int) -> None:
         visible = self.current_player().visible
         explored = self.current_player().explored
+        selected = self.get_selected()
+        selected_pos = None
+        if isinstance(selected, (Unit, Building, ResourceNode)):
+            selected_pos = (selected.x, selected.y)
         for sy in range(map_h):
             wy = self.camera_y + sy
             if wy >= MAP_HEIGHT:
@@ -1824,107 +2132,160 @@ class Game:
                 wx = self.camera_x + sx
                 if wx >= MAP_WIDTH:
                     continue
-                ch = "."
-                attr = curses.color_pair(0)
+                ch = "  "
+                attr = self.theme_attr(PAIR_UNSEEN)
                 if not explored[wy][wx]:
-                    ch = " "
+                    ch = "  "
                 else:
                     resource = self.resource_at(wx, wy)
                     building = self.building_at(wx, wy)
                     unit = self.unit_at(wx, wy)
                     if (wx, wy) in visible:
+                        attr = self.theme_attr(PAIR_GRASS)
                         if resource:
                             _, node = resource
                             ch = node.glyph
-                            if node.kind == "gazelle":
-                                attr = curses.color_pair(3)
+                            if node.kind == "tree":
+                                attr = self.theme_attr(PAIR_TREE, curses.A_BOLD)
+                            elif node.kind == "berries":
+                                attr = self.theme_attr(PAIR_BERRY, curses.A_BOLD)
                             elif node.kind == "gold":
-                                attr = curses.color_pair(3)
+                                attr = self.theme_attr(PAIR_GOLD, curses.A_BOLD)
                             elif node.kind == "stone":
-                                attr = curses.color_pair(6)
+                                attr = self.theme_attr(PAIR_STONE, curses.A_BOLD)
                             else:
-                                attr = curses.color_pair(1)
+                                attr = self.theme_attr(PAIR_GAZELLE, curses.A_BOLD)
                         if building:
                             ch = building.glyph
-                            attr = self.owner_color_pair(building.owner)
+                            attr = self.owner_color_pair(building.owner) | curses.A_BOLD
+                            if not building.complete:
+                                attr = self.theme_attr(PAIR_ALERT, curses.A_BOLD)
                         if unit:
                             ch = unit.glyph.upper() if unit.owner == self.local_player_id else unit.glyph
-                            attr = self.owner_color_pair(unit.owner)
+                            attr = self.owner_color_pair(unit.owner) | curses.A_BOLD
                     else:
-                        ch = ","
+                        remembered_resource = self.resource_memory_at(self.local_player_id, wx, wy)
+                        if remembered_resource:
+                            _, node = remembered_resource
+                            ch = node.glyph
+                            attr = self.remembered_resource_attr(node.kind)
+                        else:
+                            ch = "░░"
+                            attr = self.theme_attr(PAIR_FOG, curses.A_DIM)
                 text = self.cell_text(ch)
+                if selected_pos == (wx, wy):
+                    attr |= curses.A_BOLD
                 if wx == self.cursor_x and wy == self.cursor_y:
-                    attr |= curses.A_REVERSE
-                self.stdscr.addstr(sy, sx * TILE_WIDTH, text, attr)
+                    attr |= curses.A_REVERSE | curses.A_BOLD
+                self.safe_addstr(origin_y + sy, origin_x + (sx * TILE_WIDTH), text, attr)
 
-    def draw_sidebar(self, map_screen_w: int, sidebar: int, height: int) -> None:
-        x0 = map_screen_w + 1
+    def draw_sidebar(self, x0: int, y0: int, width: int, height: int) -> None:
         player = self.current_player()
-        lines = [
-            "SSH of Empires",
-            "",
-            f"Civ: {player.civ}",
-            f"Age: {AGE_NAMES[player.age]}",
-            f"Food: {player.food}",
-            f"Wood: {player.wood}",
-            f"Gold: {player.gold}",
-            f"Stone: {player.stone}",
-            f"Pop: {self.player_population(self.local_player_id)}/{player.pop_cap}",
-            "",
-        ]
-        opponents = [other for other in self.players if other.id != self.local_player_id]
-        for other in opponents[:2]:
-            lines.extend(
-                [
-                    f"{other.name}: {other.civ}",
-                    f"{other.name} age: {AGE_NAMES[other.age]}",
-                    "",
-                ]
-            )
-        selected = self.get_selected()
-        lines.extend(["", "Selected:"])
-        lines.append(self.entity_summary(selected) if selected else "None")
-        if self.build_menu_open:
-            lines.extend(
-                [
-                    "",
-                    "Build Menu:",
-                    "1/h House (35W)",
-                    "2/l Lumber (70W)",
-                    "3/m Mill (60W)",
-                    "4/r Barracks (90W)",
-                    "b/x/Esc close",
-                ]
-            )
-        lines.extend(
-            [
-                "",
-                "Keys:",
-                "Arrows/^B^F^P^N move",
-                "Shift+Arrows fast",
-                "<space> select",
-                "Tab cycle owned",
-                "a action",
-                "^Space action alt",
-                "b build menu",
-                "v villager",
-                "s soldier",
-                "n next age",
-                "t tech",
-                "x/Esc clear",
-                "q quit",
-            ]
+        y = y0
+        max_y = y0 + height
+
+        def add_line(text: str, attr: Optional[int] = None) -> bool:
+            nonlocal y
+            if y >= max_y:
+                return False
+            self.safe_addstr(y, x0, text[:width], self.theme_attr(PAIR_TEXT) if attr is None else attr)
+            y += 1
+            return True
+
+        def add_header(title: str) -> bool:
+            nonlocal y
+            if y >= max_y:
+                return False
+            label = f" {title.upper()} "
+            filler = "·" * max(0, width - len(label))
+            self.safe_addstr(y, x0, label[:width], self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD))
+            if len(label) < width:
+                self.safe_addstr(y, x0 + len(label), filler[: width - len(label)], self.theme_attr(PAIR_PANEL_MUTED))
+            y += 1
+            return True
+
+        def add_resource_row(
+            left_label: str,
+            left_value: int,
+            left_pair: int,
+            right_label: str,
+            right_value: int,
+            right_pair: int,
+        ) -> None:
+            nonlocal y
+            if y >= max_y:
+                return
+            right_x = x0 + max(14, width // 2)
+            self.safe_addstr(y, x0, left_label, self.theme_attr(left_pair, curses.A_BOLD))
+            self.safe_addstr(y, x0 + len(left_label), f" {left_value}", self.theme_attr(PAIR_TEXT))
+            if right_x < x0 + width:
+                self.safe_addstr(y, right_x, right_label, self.theme_attr(right_pair, curses.A_BOLD))
+                self.safe_addstr(y, right_x + len(right_label), f" {right_value}", self.theme_attr(PAIR_TEXT))
+            y += 1
+
+        add_header("Empire")
+        add_line(f"Age {AGE_NAMES[player.age]}")
+        add_line(
+            f"Pop {self.player_population(self.local_player_id)}/{player.pop_cap} · "
+            f"Eco {player.economy_level}/{len(TECHS['economy']['cost'])} · "
+            f"Mil {player.military_level}/{len(TECHS['military']['cost'])}"
         )
-        for idx, line in enumerate(lines[: height - 1]):
-            if idx == 0:
-                self.stdscr.addstr(idx, x0, line[: sidebar - 1], curses.A_BOLD)
-            else:
-                self.stdscr.addstr(idx, x0, line[: sidebar - 1])
+        add_resource_row("Food", player.food, PAIR_FOOD, "Wood", player.wood, PAIR_WOOD)
+        add_resource_row("Gold", player.gold, PAIR_GOLD_TEXT, "Stone", player.stone, PAIR_STONE_TEXT)
+        if player.ageing:
+            next_age = AGE_NAMES[min(player.age + 1, len(AGE_NAMES) - 1)]
+            total = AGE_ADVANCE.get(player.age, {"time": player.ageing.time_left})["time"]
+            add_line(f"Advancing to {next_age}", self.theme_attr(PAIR_SUCCESS))
+            add_line(
+                f"{self.meter(total - player.ageing.time_left, total, max(8, min(width - 10, 16)))} "
+                f"{player.ageing.time_left:>3}t",
+                self.theme_attr(PAIR_PROMPT),
+            )
+
+        opponents = [other for other in self.players if other.id != self.local_player_id]
+        if opponents:
+            add_header("Opponents")
+            for other in opponents[:2]:
+                add_line(f"{other.name} · {other.civ}", self.owner_color_pair(other.id) | curses.A_BOLD)
+                add_line(f"Age {AGE_NAMES[other.age]}", self.theme_attr(PAIR_PANEL_MUTED))
+
+        selected = self.get_selected()
+        add_header("Selection")
+        for line in self.selected_panel_lines(selected, width):
+            if not add_line(line):
+                break
+
+        if self.build_menu_open:
+            add_header("Build")
+            for line in ["1/h House", "2/l Lumber", "3/m Mill", "4/r Barracks", "b/x close"]:
+                if not add_line(line, self.theme_attr(PAIR_PROMPT)):
+                    break
+
+        add_header("Cursor")
+        for line in self.wrap_panel_lines([f"{self.cursor_x},{self.cursor_y} · {self.describe_cursor_tile()[6:]}"], width):
+            if not add_line(line, self.theme_attr(PAIR_PANEL_MUTED)):
+                break
+
+        add_header("Commands")
+        command_lines = [
+            "Arrows move · Shift fast",
+            "Space select · a act",
+            "b build · v villager",
+            "s soldier · n age · t tech",
+            "Tab cycle · x clear · q quit",
+        ]
+        for line in command_lines:
+            if not add_line(line, self.theme_attr(PAIR_PANEL_MUTED)):
+                break
 
     def describe_cursor_tile(self) -> str:
         visible = self.current_player().visible
         pos = (self.cursor_x, self.cursor_y)
         if pos not in visible:
+            remembered_resource = self.resource_memory_at(self.local_player_id, self.cursor_x, self.cursor_y)
+            if remembered_resource:
+                _, node = remembered_resource
+                return f"Tile: {node.visible_name()} (fog)"
             if self.current_player().explored[self.cursor_y][self.cursor_x]:
                 return "Tile: explored fog"
             return "Tile: unseen"
@@ -1942,11 +2303,30 @@ class Game:
             return f"Tile: {node.visible_name()}"
         return "Tile: grass"
 
-    def draw_log(self, height: int, width: int) -> None:
-        start = height - LOG_LIMIT - 1
-        self.stdscr.hline(start, 0, "-", width)
-        for idx, line in enumerate(self.visible_logs()[-LOG_LIMIT:]):
-            self.stdscr.addstr(start + 1 + idx, 0, line[: width - 1])
+    def draw_log(self, y0: int, width: int, height: int) -> None:
+        self.draw_box(
+            y0,
+            0,
+            height,
+            width,
+            "Chronicle",
+            border_attr=self.theme_attr(PAIR_PANEL),
+            title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+        )
+        logs = self.visible_logs()[-(height - 2) :]
+        if not logs:
+            self.safe_addstr(y0 + 1, 2, "No recent events yet.", self.theme_attr(PAIR_PANEL_MUTED))
+            return
+        inner_width = max(8, width - 4)
+        for idx, line in enumerate(logs):
+            line_y = y0 + 1 + idx
+            if line.startswith("[") and "] " in line:
+                stamp, message = line.split("] ", 1)
+                stamp += "]"
+                self.safe_addstr(line_y, 2, stamp, self.theme_attr(PAIR_PANEL_MUTED))
+                self.safe_addstr(line_y, 2 + len(stamp) + 1, message[: max(0, inner_width - len(stamp) - 1)], self.theme_attr(PAIR_TEXT))
+            else:
+                self.safe_addstr(line_y, 2, line[:inner_width], self.theme_attr(PAIR_TEXT))
 
 
 class LobbyStore:
@@ -2419,9 +2799,11 @@ class SSHOfEmpiresApp:
     def __init__(self, stdscr: curses.window) -> None:
         self.stdscr = stdscr
         self.store = LobbyStore()
+        self.theme_mode = "mono"
         if hasattr(curses, "set_escdelay"):
             curses.set_escdelay(CURSES_ESCDELAY_MS)
         self.stdscr.keypad(True)
+        self.theme_mode = initialize_terminal_theme()
 
     def safe_addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
         height, width = self.stdscr.getmaxyx()
@@ -2435,18 +2817,23 @@ class SSHOfEmpiresApp:
         except curses.error:
             pass
 
+    def theme_attr(self, pair_id: int, extra: int = 0) -> int:
+        return theme_color(pair_id) | extra
+
     def draw_box(self, y: int, x: int, h: int, w: int, title: Optional[str] = None) -> None:
         if h < 3 or w < 4:
             return
-        self.safe_addstr(y, x, "╔" + ("═" * (w - 2)) + "╗")
+        border_attr = self.theme_attr(PAIR_PANEL)
+        title_attr = self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD)
+        self.safe_addstr(y, x, "╔" + ("═" * (w - 2)) + "╗", border_attr)
         for row in range(1, h - 1):
-            self.safe_addstr(y + row, x, "║")
-            self.safe_addstr(y + row, x + w - 1, "║")
-        self.safe_addstr(y + h - 1, x, "╚" + ("═" * (w - 2)) + "╝")
+            self.safe_addstr(y + row, x, "║", border_attr)
+            self.safe_addstr(y + row, x + w - 1, "║", border_attr)
+        self.safe_addstr(y + h - 1, x, "╚" + ("═" * (w - 2)) + "╝", border_attr)
         if title:
             label = f" {title} "
             start = x + max(1, (w - len(label)) // 2)
-            self.safe_addstr(y, start, label)
+            self.safe_addstr(y, start, label[: max(0, w - 2)], title_attr)
 
     def menu(self, title: str, options: List[str], subtitle: str = "") -> int:
         index = 0
@@ -2461,12 +2848,12 @@ class SSHOfEmpiresApp:
             x = max(2, (width - panel_w) // 2)
             self.draw_box(y, x, panel_h, panel_w, title)
             if subtitle:
-                self.safe_addstr(y + 2, x + 2, subtitle[: panel_w - 4])
+                self.safe_addstr(y + 2, x + 2, subtitle[: panel_w - 4], self.theme_attr(PAIR_PANEL_MUTED))
             for idx, option in enumerate(options):
                 prefix = "›" if idx == index else " "
-                attr = curses.A_REVERSE if idx == index else 0
+                attr = self.theme_attr(PAIR_CURSOR, curses.A_BOLD) if idx == index else self.theme_attr(PAIR_TEXT)
                 self.safe_addstr(y + 4 + idx, x + 4, f"{prefix} {option}"[: panel_w - 8], attr)
-            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Select    [ Esc ] Back")
+            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Select    [ Esc ] Back", self.theme_attr(PAIR_PANEL_MUTED))
             self.stdscr.refresh()
 
             key = self.stdscr.getch()
@@ -2500,13 +2887,13 @@ class SSHOfEmpiresApp:
             y = max(1, (height - panel_h) // 2)
             x = max(2, (width - panel_w) // 2)
             self.draw_box(y, x, panel_h, panel_w, title)
-            self.safe_addstr(y + 2, x + 2, label)
-            self.safe_addstr(y + 3, x + 2, f"> {buffer}")
+            self.safe_addstr(y + 2, x + 2, label, self.theme_attr(PAIR_TEXT))
+            self.safe_addstr(y + 3, x + 2, f"> {buffer}", self.theme_attr(PAIR_PROMPT))
             for idx, line in enumerate(footer_lines):
-                self.safe_addstr(y + 5 + idx, x + 2, line[: panel_w - 4])
+                self.safe_addstr(y + 5 + idx, x + 2, line[: panel_w - 4], self.theme_attr(PAIR_PANEL_MUTED))
             if notice:
-                self.safe_addstr(y + panel_h - 3, x + 2, notice[: panel_w - 4])
-            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Confirm    [ Esc ] Cancel")
+                self.safe_addstr(y + panel_h - 3, x + 2, notice[: panel_w - 4], self.theme_attr(PAIR_ALERT))
+            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Confirm    [ Esc ] Cancel", self.theme_attr(PAIR_PANEL_MUTED))
             cursor_x = min(width - 1, x + 4 + len(buffer))
             self.stdscr.move(y + 3, cursor_x)
             self.stdscr.refresh()
@@ -2593,8 +2980,8 @@ class SSHOfEmpiresApp:
             x = max(2, (width - panel_w) // 2)
             self.draw_box(y, x, panel_h, panel_w, title)
             for idx, line in enumerate(lines):
-                self.safe_addstr(y + 2 + idx, x + 2, line)
-            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] OK")
+                self.safe_addstr(y + 2 + idx, x + 2, line, self.theme_attr(PAIR_TEXT))
+            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] OK", self.theme_attr(PAIR_PANEL_MUTED))
             self.stdscr.refresh()
             key = self.stdscr.getch()
             if key in (10, 13, curses.KEY_ENTER, 27):
