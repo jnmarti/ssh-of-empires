@@ -1,6 +1,19 @@
 #!/bin/bash
-set -eu
+set -euo pipefail
+
+game_path="/usr/bin:/bin"
+game_term="$${TERM:-xterm-256color}"
+game_lang="$${LANG:-C.UTF-8}"
+game_lc_all="$${LC_ALL:-C.UTF-8}"
 
 cd "${game_dir}"
-export TERM="$${TERM:-xterm-256color}"
-exec python3 "${game_dir}/aoe_terminal.py"
+umask 077
+exec env -i \
+  HOME="/home/${player_username}" \
+  USER="${player_username}" \
+  LOGNAME="${player_username}" \
+  PATH="$${game_path}" \
+  TERM="$${game_term}" \
+  LANG="$${game_lang}" \
+  LC_ALL="$${game_lc_all}" \
+  python3 "${game_dir}/aoe_terminal.py"

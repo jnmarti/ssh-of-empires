@@ -7,7 +7,9 @@
 Welcome to **SSH of Empires**, a terminal RTS inspired by the original Age of Empires. You gather resources, build your settlement, train armies, advance through the ages, and crush rival civilizations, all through a keyboard-only interface over a plain SSH session.
 
 **Play it now at**
-> `ssh -p 2222 player@ssh-of-empires@juanmartinez.xyz`
+> `ssh -p 2222 -t player@ssh-of-empires.juanmartinez.xyz`
+
+The public deployment allows anonymous SSH access for the `player` account and drops the session straight into the game.
 
 ## What Kind of Game Is This?
 
@@ -411,6 +413,7 @@ ssh -p 2222 -t YOUR_USER@HOST
 Notes:
 
 - the server forces the game as the login command
+- the local helper remains key-based for development; the Terraform deployment below is the public anonymous-access setup
 - the launcher auto-seeds `ssh/authorized_keys` from `~/.ssh/id_ed25519.pub` on first run if possible
 - the local `ssh/sshd_config` file is generated at runtime and is intentionally not committed
 - on macOS, running `sshd` as a normal user can emit harmless audit/login-record warnings
@@ -427,17 +430,26 @@ terraform init
 terraform apply
 ```
 
+For a public deployment, keep the game SSH port open to the world in `terraform.tfvars`.
+
 After apply, Terraform prints a ready-to-use SSH command similar to:
 
 ```bash
-ssh -p 2222 -t player@SOME_IP
+ssh -p 2222 -t player@ssh-of-empires.juanmartinez.xyz
 ```
 
 Current deployment behavior:
 
 - `terraform apply` updates infrastructure changes
-- it also re-runs the bootstrap when tracked game assets change
-- right now that includes the main game file and the SSH/bootstrap templates referenced by Terraform
+- it uploads the local game file and a freshly built website bundle as deployment artifacts
+- first-boot `user_data` on the instance installs those artifacts without Terraform SSHing into the box
+- optional Let's Encrypt bootstrap can restore the website on `https://` without any Terraform-managed admin SSH
+- admin access is intended to go through the Lightsail browser SSH client, not a Terraform-managed key pair
+- the public `player` endpoint allows anonymous SSH and still forces every session into the game only
+- the deployment persists a stable SSH host key, so routine instance replacements do not change the game's server identity
+- port `22` remains open so the Lightsail browser SSH client can still work if you need console access
+
+If you want the website on HTTPS, set `enable_https = true` and `letsencrypt_email = "you@example.com"` in `terraform.tfvars`. The instance will come up on HTTP first and then retry certificate issuance until DNS and the static IP are aligned.
 
 ### Repository Notes
 

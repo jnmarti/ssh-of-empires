@@ -13,6 +13,7 @@ https://ssh-of-empires.juanmartinez.xyz/llms.txt
 
 Game Access
 - Connect with: ssh -p 2222 -t player@ssh-of-empires.juanmartinez.xyz
+- No SSH keypair is required for normal access; sessions are anonymous.
 - Use a full terminal type if needed: TERM=xterm-256color
 - Recommended terminal size: at least 90 columns by 22 rows
 
