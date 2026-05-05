@@ -26,6 +26,8 @@ LOG_LIMIT = 6
 VISION_PADDING = 1
 ENEMY_ENABLED = True
 FAST_SCROLL = 5
+DAMAGE_FLASH_TICKS = 12
+DAMAGE_MARKER_TICKS = 2
 VILLAGER_TRAIN_TIME = (25_000 + TICK_MS - 1) // TICK_MS
 HOUSE_BUILD_TIME = (25_000 + TICK_MS - 1) // TICK_MS
 BARRACKS_UNIT_TRAIN_TIME = (21_000 + TICK_MS - 1) // TICK_MS
@@ -252,6 +254,10 @@ PAIR_BERRY_MEMORY = 25
 PAIR_GAZELLE_MEMORY = 26
 PAIR_GOLD_MEMORY = 27
 PAIR_STONE_MEMORY = 28
+PAIR_DAMAGE = 29
+
+# Neutral UI gray with readable contrast on both black and white terminal backgrounds.
+UI_CONTRAST_256 = 243
 
 EXTENDED_THEME_PAIRS = {
     PAIR_GRASS: (120, 22),
@@ -265,23 +271,24 @@ EXTENDED_THEME_PAIRS = {
     PAIR_PLAYER_1: (51, 22),
     PAIR_PLAYER_2: (210, 22),
     PAIR_PLAYER_3: (159, 22),
-    PAIR_PANEL: (110, -1),
-    PAIR_PANEL_TITLE: (229, -1),
-    PAIR_PANEL_MUTED: (244, -1),
-    PAIR_ALERT: (215, -1),
+    PAIR_PANEL: (UI_CONTRAST_256, -1),
+    PAIR_PANEL_TITLE: (UI_CONTRAST_256, -1),
+    PAIR_PANEL_MUTED: (UI_CONTRAST_256, -1),
+    PAIR_ALERT: (UI_CONTRAST_256, -1),
     PAIR_CURSOR: (232, 229),
-    PAIR_TEXT: (252, -1),
-    PAIR_FOOD: (217, -1),
-    PAIR_WOOD: (151, -1),
-    PAIR_GOLD_TEXT: (221, -1),
-    PAIR_STONE_TEXT: (250, -1),
-    PAIR_SUCCESS: (121, -1),
-    PAIR_PROMPT: (117, -1),
+    PAIR_TEXT: (UI_CONTRAST_256, -1),
+    PAIR_FOOD: (UI_CONTRAST_256, -1),
+    PAIR_WOOD: (UI_CONTRAST_256, -1),
+    PAIR_GOLD_TEXT: (UI_CONTRAST_256, -1),
+    PAIR_STONE_TEXT: (UI_CONTRAST_256, -1),
+    PAIR_SUCCESS: (UI_CONTRAST_256, -1),
+    PAIR_PROMPT: (UI_CONTRAST_256, -1),
     PAIR_TREE_MEMORY: (108, -1),
     PAIR_BERRY_MEMORY: (181, -1),
     PAIR_GAZELLE_MEMORY: (187, -1),
     PAIR_GOLD_MEMORY: (186, -1),
     PAIR_STONE_MEMORY: (245, -1),
+    PAIR_DAMAGE: (231, 160),
 }
 
 BASIC_THEME_PAIRS = {
@@ -296,23 +303,24 @@ BASIC_THEME_PAIRS = {
     PAIR_PLAYER_1: (curses.COLOR_BLUE, -1),
     PAIR_PLAYER_2: (curses.COLOR_RED, -1),
     PAIR_PLAYER_3: (curses.COLOR_CYAN, -1),
-    PAIR_PANEL: (curses.COLOR_CYAN, -1),
-    PAIR_PANEL_TITLE: (curses.COLOR_YELLOW, -1),
-    PAIR_PANEL_MUTED: (curses.COLOR_WHITE, -1),
-    PAIR_ALERT: (curses.COLOR_YELLOW, -1),
+    PAIR_PANEL: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_PANEL_TITLE: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_PANEL_MUTED: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_ALERT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
     PAIR_CURSOR: (curses.COLOR_BLACK, curses.COLOR_WHITE),
-    PAIR_TEXT: (curses.COLOR_WHITE, -1),
-    PAIR_FOOD: (curses.COLOR_RED, -1),
-    PAIR_WOOD: (curses.COLOR_GREEN, -1),
-    PAIR_GOLD_TEXT: (curses.COLOR_YELLOW, -1),
-    PAIR_STONE_TEXT: (curses.COLOR_WHITE, -1),
-    PAIR_SUCCESS: (curses.COLOR_GREEN, -1),
-    PAIR_PROMPT: (curses.COLOR_CYAN, -1),
+    PAIR_TEXT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_FOOD: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_WOOD: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_GOLD_TEXT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_STONE_TEXT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_SUCCESS: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_PROMPT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
     PAIR_TREE_MEMORY: (curses.COLOR_GREEN, -1),
     PAIR_BERRY_MEMORY: (curses.COLOR_RED, -1),
     PAIR_GAZELLE_MEMORY: (curses.COLOR_YELLOW, -1),
     PAIR_GOLD_MEMORY: (curses.COLOR_YELLOW, -1),
     PAIR_STONE_MEMORY: (curses.COLOR_WHITE, -1),
+    PAIR_DAMAGE: (curses.COLOR_WHITE, curses.COLOR_RED),
 }
 
 
@@ -553,6 +561,7 @@ class Game:
         self.tick = 0
         self.winner: Optional[int] = None
         self.theme_mode = "mono"
+        self.damage_flashes: Dict[str, int] = {}
         self.ai_memory = {"last_house_tick": -999, "last_attack_tick": -999} if enable_ai else {}
         if init_world:
             self._init_world()
@@ -689,6 +698,24 @@ class Game:
             return self.theme_attr(PAIR_STONE_MEMORY, curses.A_DIM)
         return self.theme_attr(PAIR_GAZELLE_MEMORY, curses.A_DIM)
 
+    @staticmethod
+    def damage_flash_key(entity_kind: str, entity_id: int) -> str:
+        return f"{entity_kind}:{entity_id}"
+
+    def mark_damage(self, entity_kind: str, entity_id: int) -> None:
+        if entity_kind not in {"unit", "building"}:
+            return
+        self.damage_flashes[self.damage_flash_key(entity_kind, entity_id)] = self.tick + DAMAGE_FLASH_TICKS
+
+    def damage_flash_remaining(self, entity_kind: str, entity_id: int) -> int:
+        expires_at = self.damage_flashes.get(self.damage_flash_key(entity_kind, entity_id), -1)
+        return max(0, expires_at - self.tick)
+
+    def prune_damage_flashes(self) -> None:
+        expired = [key for key, expires_at in self.damage_flashes.items() if expires_at <= self.tick]
+        for key in expired:
+            del self.damage_flashes[key]
+
     def selected_panel_lines(self, obj: object, width: int) -> List[str]:
         meter_w = max(8, min(14, width - 10))
         if obj is None:
@@ -696,6 +723,8 @@ class Game:
         lines: List[str] = []
         if isinstance(obj, Unit):
             lines.append(f"{obj.name} · {self.owner_label(obj.owner)}")
+            if self.damage_flash_remaining("unit", obj.id):
+                lines.append("!! UNDER ATTACK")
             lines.append(f"State {obj.state} · ATK {obj.attack} · VIS {obj.vision}")
             lines.append(f"HP {obj.hp}/{obj.max_hp} {self.meter(obj.hp, obj.max_hp, meter_w)}")
             if obj.kind == "villager":
@@ -708,6 +737,8 @@ class Game:
                 lines.append(f"Move to {obj.destination[0]},{obj.destination[1]}")
         elif isinstance(obj, Building):
             lines.append(f"{obj.name} · {self.owner_label(obj.owner)}")
+            if self.damage_flash_remaining("building", obj.id):
+                lines.append("!! UNDER ATTACK")
             lines.append(f"HP {obj.hp}/{obj.max_hp} {self.meter(obj.hp, obj.max_hp, meter_w)}")
             if not obj.complete:
                 lines.append(f"Build {obj.build_progress}/{obj.build_time} {self.meter(obj.build_progress, obj.build_time, meter_w)}")
@@ -769,6 +800,7 @@ class Game:
                 "tick": self.tick,
                 "winner": self.winner,
                 "player_logs": [list(lines) for lines in self.player_logs],
+                "damage_flashes": dict(self.damage_flashes),
                 "ai_memory": self.ai_memory,
                 "players": [
                     {
@@ -862,6 +894,7 @@ class Game:
         self.tick = int(data["tick"])
         winner = data.get("winner")
         self.winner = None if winner is None else int(winner)
+        self.damage_flashes = {str(key): int(value) for key, value in dict(data.get("damage_flashes", {})).items()}
         self.ai_memory = dict(data.get("ai_memory", {}))
         self.players = []
         for item in data["players"]:
@@ -1621,6 +1654,7 @@ class Game:
         self.update_units()
         self.update_ai()
         self.cleanup_destroyed()
+        self.prune_damage_flashes()
         self.reveal_visibility()
         self.sanitize_selection_visibility()
         self.check_victory()
@@ -1814,6 +1848,7 @@ class Game:
             return
         damage = unit.attack + self.players[unit.owner].military_level
         target_obj.hp -= damage
+        self.mark_damage(target_kind, target_id)
         if target_kind == "resource" and target_obj.hp <= 0:
             target_obj.alive = False
             target_obj.gatherable = False
@@ -1865,6 +1900,7 @@ class Game:
         dead_units = [unit_id for unit_id, unit in self.units.items() if unit.hp <= 0]
         for unit_id in dead_units:
             unit = self.units.pop(unit_id)
+            self.damage_flashes.pop(self.damage_flash_key("unit", unit_id), None)
             if (self.selected_kind, self.selected_id) == ("unit", unit_id):
                 self.selected_kind = None
                 self.selected_id = None
@@ -1872,6 +1908,7 @@ class Game:
         dead_buildings = [bid for bid, building in self.buildings.items() if building.hp <= 0]
         for bid in dead_buildings:
             building = self.buildings.pop(bid)
+            self.damage_flashes.pop(self.damage_flash_key("building", bid), None)
             if building.complete:
                 self.players[building.owner].pop_cap -= building.pop_bonus
             if (self.selected_kind, self.selected_id) == ("building", bid):
@@ -2134,6 +2171,7 @@ class Game:
                     continue
                 ch = "  "
                 attr = self.theme_attr(PAIR_UNSEEN)
+                damage_entity: Optional[Tuple[str, int]] = None
                 if not explored[wy][wx]:
                     ch = "  "
                 else:
@@ -2158,11 +2196,23 @@ class Game:
                         if building:
                             ch = building.glyph
                             attr = self.owner_color_pair(building.owner) | curses.A_BOLD
+                            damage_entity = ("building", building.id)
                             if not building.complete:
                                 attr = self.theme_attr(PAIR_ALERT, curses.A_BOLD)
                         if unit:
                             ch = unit.glyph.upper() if unit.owner == self.local_player_id else unit.glyph
                             attr = self.owner_color_pair(unit.owner) | curses.A_BOLD
+                            damage_entity = ("unit", unit.id)
+                        if damage_entity:
+                            remaining = self.damage_flash_remaining(*damage_entity)
+                            if remaining > 0:
+                                if remaining > DAMAGE_FLASH_TICKS - DAMAGE_MARKER_TICKS:
+                                    ch = "!!"
+                                    attr = self.theme_attr(PAIR_DAMAGE, curses.A_BOLD)
+                                elif (remaining // 2) % 2 == 0:
+                                    attr = self.theme_attr(PAIR_DAMAGE, curses.A_BOLD)
+                                else:
+                                    attr |= curses.A_REVERSE | curses.A_BOLD
                     else:
                         remembered_resource = self.resource_memory_at(self.local_player_id, wx, wy)
                         if remembered_resource:
