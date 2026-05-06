@@ -15,7 +15,7 @@ import time
 import unicodedata
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 
 MAP_WIDTH = 96
@@ -26,6 +26,8 @@ LOG_LIMIT = 6
 VISION_PADDING = 1
 ENEMY_ENABLED = True
 FAST_SCROLL = 5
+DAMAGE_FLASH_TICKS = 12
+DAMAGE_MARKER_TICKS = 2
 VILLAGER_TRAIN_TIME = (25_000 + TICK_MS - 1) // TICK_MS
 HOUSE_BUILD_TIME = (25_000 + TICK_MS - 1) // TICK_MS
 BARRACKS_UNIT_TRAIN_TIME = (21_000 + TICK_MS - 1) // TICK_MS
@@ -224,6 +226,128 @@ TECHS = {
     },
 }
 
+PAIR_GRASS = 1
+PAIR_FOG = 2
+PAIR_UNSEEN = 3
+PAIR_TREE = 4
+PAIR_BERRY = 5
+PAIR_GAZELLE = 6
+PAIR_GOLD = 7
+PAIR_STONE = 8
+PAIR_PLAYER_1 = 9
+PAIR_PLAYER_2 = 10
+PAIR_PLAYER_3 = 11
+PAIR_PANEL = 12
+PAIR_PANEL_TITLE = 13
+PAIR_PANEL_MUTED = 14
+PAIR_ALERT = 15
+PAIR_CURSOR = 16
+PAIR_TEXT = 17
+PAIR_FOOD = 18
+PAIR_WOOD = 19
+PAIR_GOLD_TEXT = 20
+PAIR_STONE_TEXT = 21
+PAIR_SUCCESS = 22
+PAIR_PROMPT = 23
+PAIR_TREE_MEMORY = 24
+PAIR_BERRY_MEMORY = 25
+PAIR_GAZELLE_MEMORY = 26
+PAIR_GOLD_MEMORY = 27
+PAIR_STONE_MEMORY = 28
+PAIR_DAMAGE = 29
+
+# Neutral UI gray with readable contrast on both black and white terminal backgrounds.
+UI_CONTRAST_256 = 243
+
+EXTENDED_THEME_PAIRS = {
+    PAIR_GRASS: (120, 22),
+    PAIR_FOG: (242, 236),
+    PAIR_UNSEEN: (235, 233),
+    PAIR_TREE: (157, 22),
+    PAIR_BERRY: (218, 22),
+    PAIR_GAZELLE: (223, 22),
+    PAIR_GOLD: (221, 22),
+    PAIR_STONE: (250, 22),
+    PAIR_PLAYER_1: (51, 22),
+    PAIR_PLAYER_2: (210, 22),
+    PAIR_PLAYER_3: (159, 22),
+    PAIR_PANEL: (UI_CONTRAST_256, -1),
+    PAIR_PANEL_TITLE: (UI_CONTRAST_256, -1),
+    PAIR_PANEL_MUTED: (UI_CONTRAST_256, -1),
+    PAIR_ALERT: (UI_CONTRAST_256, -1),
+    PAIR_CURSOR: (232, 229),
+    PAIR_TEXT: (UI_CONTRAST_256, -1),
+    PAIR_FOOD: (UI_CONTRAST_256, -1),
+    PAIR_WOOD: (UI_CONTRAST_256, -1),
+    PAIR_GOLD_TEXT: (UI_CONTRAST_256, -1),
+    PAIR_STONE_TEXT: (UI_CONTRAST_256, -1),
+    PAIR_SUCCESS: (UI_CONTRAST_256, -1),
+    PAIR_PROMPT: (UI_CONTRAST_256, -1),
+    PAIR_TREE_MEMORY: (108, -1),
+    PAIR_BERRY_MEMORY: (181, -1),
+    PAIR_GAZELLE_MEMORY: (187, -1),
+    PAIR_GOLD_MEMORY: (186, -1),
+    PAIR_STONE_MEMORY: (245, -1),
+    PAIR_DAMAGE: (231, 160),
+}
+
+BASIC_THEME_PAIRS = {
+    PAIR_GRASS: (curses.COLOR_GREEN, -1),
+    PAIR_FOG: (curses.COLOR_BLUE, -1),
+    PAIR_UNSEEN: (curses.COLOR_BLACK, -1),
+    PAIR_TREE: (curses.COLOR_GREEN, -1),
+    PAIR_BERRY: (curses.COLOR_RED, -1),
+    PAIR_GAZELLE: (curses.COLOR_YELLOW, -1),
+    PAIR_GOLD: (curses.COLOR_YELLOW, -1),
+    PAIR_STONE: (curses.COLOR_WHITE, -1),
+    PAIR_PLAYER_1: (curses.COLOR_BLUE, -1),
+    PAIR_PLAYER_2: (curses.COLOR_RED, -1),
+    PAIR_PLAYER_3: (curses.COLOR_CYAN, -1),
+    PAIR_PANEL: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_PANEL_TITLE: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_PANEL_MUTED: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_ALERT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_CURSOR: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_TEXT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_FOOD: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_WOOD: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_GOLD_TEXT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_STONE_TEXT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_SUCCESS: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_PROMPT: (curses.COLOR_BLACK, curses.COLOR_WHITE),
+    PAIR_TREE_MEMORY: (curses.COLOR_GREEN, -1),
+    PAIR_BERRY_MEMORY: (curses.COLOR_RED, -1),
+    PAIR_GAZELLE_MEMORY: (curses.COLOR_YELLOW, -1),
+    PAIR_GOLD_MEMORY: (curses.COLOR_YELLOW, -1),
+    PAIR_STONE_MEMORY: (curses.COLOR_WHITE, -1),
+    PAIR_DAMAGE: (curses.COLOR_WHITE, curses.COLOR_RED),
+}
+
+
+def initialize_terminal_theme() -> str:
+    if not curses.has_colors():
+        return "mono"
+    curses.start_color()
+    try:
+        curses.use_default_colors()
+    except curses.error:
+        pass
+    pair_limit = getattr(curses, "COLOR_PAIRS", 0)
+    supports_extended = getattr(curses, "COLORS", 0) >= 256 and pair_limit > max(EXTENDED_THEME_PAIRS)
+    pairs = EXTENDED_THEME_PAIRS if supports_extended else BASIC_THEME_PAIRS
+    for pair_id, (fg, bg) in pairs.items():
+        try:
+            curses.init_pair(pair_id, fg, bg)
+        except curses.error:
+            continue
+    return "extended" if supports_extended else "basic"
+
+
+def theme_color(pair_id: int) -> int:
+    if not curses.has_colors():
+        return 0
+    return curses.color_pair(pair_id)
+
 
 @dataclass
 class ResourceNode:
@@ -377,6 +501,7 @@ class PlayerState:
     pop_cap: int = 4
     explored: List[List[bool]] = field(default_factory=list)
     visible: Set[Tuple[int, int]] = field(default_factory=set)
+    discovered_resources: Set[int] = field(default_factory=set)
     logs_prefix: str = ""
 
     def resource_dict(self) -> Dict[str, int]:
@@ -431,11 +556,20 @@ class Game:
         self.camera_y = 0
         self.selected_kind: Optional[str] = None
         self.selected_id: Optional[int] = None
+        self.selected_unit_ids: List[int] = []
         self.build_menu_open = False
+        self.command_mode = False
+        self.command_buffer = ""
+        self.vim_count = ""
+        self.vim_pending = ""
+        self.vim_marks: Dict[str, Tuple[int, int]] = {}
+        self.last_colon_command: Optional[str] = None
         self.running = True
         self.tick = 0
         self.winner: Optional[int] = None
-        self.ai_memory = {"last_house_tick": -999, "last_attack_tick": -999} if enable_ai else {}
+        self.theme_mode = "mono"
+        self.damage_flashes: Dict[str, int] = {}
+        self.ai_memory = {"last_house_tick": -999, "last_attack_tick": -999, "last_scout_tick": -999} if enable_ai else {}
         if init_world:
             self._init_world()
             self.reveal_visibility()
@@ -478,6 +612,211 @@ class Game:
             width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
         return width
 
+    def safe_addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
+        if self.stdscr is None:
+            return
+        height, width = self.stdscr.getmaxyx()
+        if y < 0 or y >= height or x >= width:
+            return
+        available = max(0, width - x)
+        if available <= 0:
+            return
+        try:
+            self.stdscr.addstr(y, x, text[:available], attr)
+        except curses.error:
+            pass
+
+    def theme_attr(self, pair_id: int, extra: int = 0) -> int:
+        return theme_color(pair_id) | extra
+
+    def draw_box(
+        self,
+        y: int,
+        x: int,
+        h: int,
+        w: int,
+        title: Optional[str] = None,
+        border_attr: int = 0,
+        title_attr: int = 0,
+        fill_attr: int = 0,
+    ) -> None:
+        if h < 3 or w < 4:
+            return
+        self.safe_addstr(y, x, "╔" + ("═" * (w - 2)) + "╗", border_attr)
+        fill = " " * max(0, w - 2)
+        for row in range(1, h - 1):
+            self.safe_addstr(y + row, x, "║", border_attr)
+            if fill_attr:
+                self.safe_addstr(y + row, x + 1, fill, fill_attr)
+            self.safe_addstr(y + row, x + w - 1, "║", border_attr)
+        self.safe_addstr(y + h - 1, x, "╚" + ("═" * (w - 2)) + "╝", border_attr)
+        if title:
+            label = f" {title[: max(0, w - 4)]} "
+            start = x + max(1, (w - len(label)) // 2)
+            self.safe_addstr(y, start, label[: max(0, w - 2)], title_attr or border_attr)
+
+    @staticmethod
+    def meter(current: int, total: int, width: int) -> str:
+        width = max(1, width)
+        if total <= 0:
+            return "░" * width
+        filled = max(0, min(width, int(round((current / total) * width))))
+        return ("█" * filled) + ("░" * (width - filled))
+
+    def wrap_panel_lines(self, lines: List[str], width: int) -> List[str]:
+        wrapped: List[str] = []
+        for line in lines:
+            wrapped.extend(textwrap.wrap(line, max(8, width)) or [""])
+        return wrapped
+
+    def describe_target_ref(self, target: Optional[Tuple[str, int]]) -> str:
+        if not target:
+            return "None"
+        kind, target_id = target
+        if kind == "resource":
+            node = self.resources.get(target_id)
+            return node.visible_name() if node else "resource"
+        if kind == "unit":
+            unit = self.units.get(target_id)
+            return f"{self.owner_label(unit.owner)} {unit.name}" if unit else "unit"
+        if kind == "building":
+            building = self.buildings.get(target_id)
+            return f"{self.owner_label(building.owner)} {building.name}" if building else "building"
+        return kind
+
+    def production_total_time(self, building: Building, item: ProductionItem) -> int:
+        if item.kind == "unit" and item.target in UNIT_STATS:
+            return int(UNIT_STATS[item.target]["train_time"])
+        owner = self.players[building.owner]
+        if item.kind == "tech" and item.target == "economy":
+            return int(TECHS["economy"]["time"][owner.economy_level])
+        if item.kind == "tech" and item.target == "military":
+            return int(TECHS["military"]["time"][owner.military_level])
+        return max(1, item.time_left)
+
+    def remembered_resource_attr(self, kind: str) -> int:
+        if kind == "tree":
+            return self.theme_attr(PAIR_TREE_MEMORY, curses.A_DIM)
+        if kind == "berries":
+            return self.theme_attr(PAIR_BERRY_MEMORY, curses.A_DIM)
+        if kind == "gold":
+            return self.theme_attr(PAIR_GOLD_MEMORY, curses.A_DIM)
+        if kind == "stone":
+            return self.theme_attr(PAIR_STONE_MEMORY, curses.A_DIM)
+        return self.theme_attr(PAIR_GAZELLE_MEMORY, curses.A_DIM)
+
+    @staticmethod
+    def damage_flash_key(entity_kind: str, entity_id: int) -> str:
+        return f"{entity_kind}:{entity_id}"
+
+    def mark_damage(self, entity_kind: str, entity_id: int) -> None:
+        if entity_kind not in {"unit", "building"}:
+            return
+        self.damage_flashes[self.damage_flash_key(entity_kind, entity_id)] = self.tick + DAMAGE_FLASH_TICKS
+
+    def damage_flash_remaining(self, entity_kind: str, entity_id: int) -> int:
+        expires_at = self.damage_flashes.get(self.damage_flash_key(entity_kind, entity_id), -1)
+        return max(0, expires_at - self.tick)
+
+    def prune_damage_flashes(self) -> None:
+        expired = [key for key, expires_at in self.damage_flashes.items() if expires_at <= self.tick]
+        for key in expired:
+            del self.damage_flashes[key]
+
+    def selected_panel_lines(self, obj: object, width: int) -> List[str]:
+        meter_w = max(8, min(14, width - 10))
+        if obj is None:
+            return ["No unit or building selected."]
+        lines: List[str] = []
+        if isinstance(obj, Unit):
+            lines.append(f"{obj.name} · {self.owner_label(obj.owner)}")
+            if self.damage_flash_remaining("unit", obj.id):
+                lines.append("!! UNDER ATTACK")
+            lines.append(f"State {obj.state} · ATK {obj.attack} · VIS {obj.vision}")
+            lines.append(f"HP {obj.hp}/{obj.max_hp} {self.meter(obj.hp, obj.max_hp, meter_w)}")
+            if obj.kind == "villager":
+                carry_bits = [f"{kind[0].upper()}{amount}" for kind, amount in obj.carrying.items() if amount]
+                carry_text = " ".join(carry_bits) if carry_bits else "empty"
+                lines.append(f"Carry {carry_text} / {obj.carry_capacity}")
+            if obj.target:
+                lines.append(f"Target {self.describe_target_ref(obj.target)}")
+            elif obj.destination:
+                lines.append(f"Move to {obj.destination[0]},{obj.destination[1]}")
+            lines.extend(self.selection_action_lines(obj))
+        elif isinstance(obj, Building):
+            lines.append(f"{obj.name} · {self.owner_label(obj.owner)}")
+            if self.damage_flash_remaining("building", obj.id):
+                lines.append("!! UNDER ATTACK")
+            lines.append(f"HP {obj.hp}/{obj.max_hp} {self.meter(obj.hp, obj.max_hp, meter_w)}")
+            if not obj.complete:
+                lines.append(f"Build {obj.build_progress}/{obj.build_time} {self.meter(obj.build_progress, obj.build_time, meter_w)}")
+            if obj.queue:
+                current = obj.queue[0]
+                target = current.target or current.kind
+                total = self.production_total_time(obj, current)
+                lines.append(f"Queue {target} ({current.time_left}t)")
+                lines.append(f"Prod {self.meter(total - current.time_left, total, meter_w)}")
+            lines.extend(self.selection_action_lines(obj))
+        elif isinstance(obj, ResourceNode):
+            lines.append(obj.name)
+            if obj.kind == "gazelle" and obj.alive:
+                lines.append(f"HP {obj.hp} · Food {obj.amount}")
+            elif obj.kind == "gazelle" and not obj.gatherable:
+                lines.append("No usable food remains.")
+            else:
+                lines.append(f"Remaining {obj.amount}")
+            lines.extend(self.selection_action_lines(obj))
+        return self.wrap_panel_lines(lines, width)
+
+    @staticmethod
+    def format_cost(cost: Dict[str, int]) -> str:
+        labels = [("food", "F"), ("wood", "W"), ("gold", "G"), ("stone", "S")]
+        parts = [f"{label}{cost.get(kind, 0)}" for kind, label in labels if cost.get(kind, 0)]
+        return " ".join(parts) if parts else "Free"
+
+    def selection_action_lines(self, obj: object) -> List[str]:
+        if isinstance(obj, Unit):
+            if obj.owner != self.local_player_id:
+                return ["Actions: select army, a attack"]
+            if obj.kind == "villager":
+                return ["Actions:", "a Move/gather/build", "b Build menu"]
+            return ["Actions:", "a Move/attack"]
+        if isinstance(obj, Building):
+            if obj.owner != self.local_player_id:
+                return ["Actions: select army, a attack"]
+            if not obj.complete:
+                return ["Actions: select villager, a build"]
+            player = self.current_player()
+            if obj.kind == "town_center":
+                actions = [f"v Train Villager {self.format_cost(UNIT_STATS['villager']['cost'])}"]
+                if player.age >= len(AGE_NAMES) - 1:
+                    actions.append("n Advance Age max")
+                elif player.ageing:
+                    actions.append("n Age in progress")
+                else:
+                    next_age = AGE_NAMES[player.age + 1]
+                    actions.append(f"n Advance {next_age} {self.format_cost(AGE_ADVANCE[player.age]['cost'])}")
+                return ["Actions:"] + actions
+            if obj.kind == "barracks":
+                kind = self.available_military(player.age)
+                stats = UNIT_STATS[kind]
+                actions = [f"s Train {stats['name']} {self.format_cost(stats['cost'])}"]
+                level = player.military_level
+                if level >= len(TECHS["military"]["cost"]):
+                    actions.append("t Weapons max")
+                else:
+                    actions.append(f"t Research Weapons {self.format_cost(TECHS['military']['cost'][level])}")
+                return ["Actions:"] + actions
+            if obj.kind == "mill":
+                level = player.economy_level
+                if level >= len(TECHS["economy"]["cost"]):
+                    return ["Actions:", "t Harvesting max"]
+                return ["Actions:", f"t Research Harvest {self.format_cost(TECHS['economy']['cost'][level])}"]
+            return ["Actions: no commands"]
+        if isinstance(obj, ResourceNode):
+            return ["Actions: select villager, a gather"]
+        return []
+
     def cell_text(self, glyph: str) -> str:
         width = self.glyph_display_width(glyph)
         if width >= TILE_WIDTH:
@@ -505,20 +844,11 @@ class Game:
         if hasattr(curses, "set_escdelay"):
             curses.set_escdelay(CURSES_ESCDELAY_MS)
         self.stdscr.keypad(True)
-        if curses.has_colors():
-            curses.start_color()
-            curses.use_default_colors()
-            curses.init_pair(1, curses.COLOR_GREEN, -1)
-            curses.init_pair(2, curses.COLOR_RED, -1)
-            curses.init_pair(3, curses.COLOR_YELLOW, -1)
-            curses.init_pair(4, curses.COLOR_BLUE, -1)
-            curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_BLUE)
-            curses.init_pair(6, curses.COLOR_WHITE, -1)
-            curses.init_pair(7, curses.COLOR_CYAN, -1)
+        self.theme_mode = initialize_terminal_theme()
 
     def owner_color_pair(self, owner: int) -> int:
-        palette = [4, 2, 7]
-        return curses.color_pair(palette[owner % len(palette)])
+        palette = [PAIR_PLAYER_1, PAIR_PLAYER_2, PAIR_PLAYER_3]
+        return self.theme_attr(palette[owner % len(palette)])
 
     def serialize_state(self) -> str:
         return json.dumps(
@@ -529,6 +859,7 @@ class Game:
                 "tick": self.tick,
                 "winner": self.winner,
                 "player_logs": [list(lines) for lines in self.player_logs],
+                "damage_flashes": dict(self.damage_flashes),
                 "ai_memory": self.ai_memory,
                 "players": [
                     {
@@ -553,6 +884,7 @@ class Game:
                         ),
                         "pop_cap": player.pop_cap,
                         "explored": player.explored,
+                        "discovered_resources": sorted(player.discovered_resources),
                     }
                     for player in self.players
                 ],
@@ -621,6 +953,7 @@ class Game:
         self.tick = int(data["tick"])
         winner = data.get("winner")
         self.winner = None if winner is None else int(winner)
+        self.damage_flashes = {str(key): int(value) for key, value in dict(data.get("damage_flashes", {})).items()}
         self.ai_memory = dict(data.get("ai_memory", {}))
         self.players = []
         for item in data["players"]:
@@ -647,6 +980,7 @@ class Game:
                 ),
                 pop_cap=int(item["pop_cap"]),
                 explored=item["explored"],
+                discovered_resources={int(rid) for rid in item.get("discovered_resources", [])},
             )
             self.players.append(player)
         self.player_logs = [[] for _ in self.players]
@@ -862,6 +1196,12 @@ class Game:
                 return rid, node
         return None
 
+    def resource_memory_at(self, owner: int, x: int, y: int) -> Optional[Tuple[int, ResourceNode]]:
+        resource = self.resource_at(x, y)
+        if resource and resource[0] in self.players[owner].discovered_resources:
+            return resource
+        return None
+
     def unit_at(self, x: int, y: int) -> Optional[Unit]:
         for unit in self.units.values():
             if unit.x == x and unit.y == y:
@@ -884,6 +1224,9 @@ class Game:
     def player_population(self, owner: int) -> int:
         return sum(1 for unit in self.units.values() if unit.owner == owner)
 
+    def tile_visible_to(self, owner: int, x: int, y: int) -> bool:
+        return (x, y) in self.players[owner].visible
+
     def reveal_visibility(self) -> None:
         for player in self.players:
             player.visible = set()
@@ -900,6 +1243,20 @@ class Game:
                 if abs(x - cx) + abs(y - cy) <= radius + VISION_PADDING:
                     player.visible.add((x, y))
                     player.explored[y][x] = True
+                    resource = self.resource_at(x, y)
+                    if resource:
+                        player.discovered_resources.add(resource[0])
+
+    def sanitize_selection_visibility(self) -> None:
+        selected = self.get_selected()
+        if not isinstance(selected, Unit):
+            return
+        if selected.owner == self.local_player_id:
+            return
+        if self.tile_visible_to(self.local_player_id, selected.x, selected.y):
+            return
+        self.selected_kind = None
+        self.selected_id = None
 
     def run(self) -> None:
         if self.stdscr is None:
@@ -919,6 +1276,12 @@ class Game:
         if key == -1:
             return
         key = normalize_input_key(self.stdscr, key, TICK_MS)
+        vim_result = self.handle_vim_input(key)
+        if vim_result == "quit":
+            self.running = False
+            return
+        if vim_result == "handled":
+            return
         if self.build_menu_open:
             self.handle_build_menu_input(key)
             return
@@ -935,6 +1298,7 @@ class Game:
         elif key in (ord("x"), 27):
             self.selected_id = None
             self.selected_kind = None
+            self.selected_unit_ids = []
             self.build_menu_open = False
         elif key in (ord("a"), curses.ascii.NUL):
             self.issue_context_command()
@@ -952,6 +1316,516 @@ class Game:
     def move_cursor(self, dx: int, dy: int) -> None:
         self.cursor_x = max(0, min(MAP_WIDTH - 1, self.cursor_x + dx))
         self.cursor_y = max(0, min(MAP_HEIGHT - 1, self.cursor_y + dy))
+
+    def handle_vim_input(
+        self,
+        key: int,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]] = None,
+    ) -> Optional[str]:
+        if self.command_mode:
+            return self.handle_command_mode_input(key, queue_payload)
+        if self.build_menu_open:
+            return None
+        if key == ord(":"):
+            self.command_mode = True
+            self.command_buffer = ""
+            self.vim_count = ""
+            self.vim_pending = ""
+            return "handled"
+        if key == ord("."):
+            if self.last_colon_command:
+                return self.execute_colon_command(self.last_colon_command, queue_payload, from_repeat=True)
+            self._log("No command to repeat.")
+            return "handled"
+        if key == 27:
+            self.vim_count = ""
+            self.vim_pending = ""
+            return None
+        if not 0 <= key < 256:
+            self.vim_count = ""
+            self.vim_pending = ""
+            return None
+
+        ch = chr(key)
+        if self.vim_pending == "g":
+            self.vim_pending = ""
+            if ch == "g":
+                self.jump_home()
+                return "handled"
+            self._log("Unknown g command.")
+            return "handled"
+        if self.vim_pending == "m":
+            self.vim_pending = ""
+            if ch.isalnum():
+                self.vim_marks[ch] = (self.cursor_x, self.cursor_y)
+                self._log(f"Marked {ch} at {self.cursor_x},{self.cursor_y}.")
+            return "handled"
+        if self.vim_pending == "'":
+            self.vim_pending = ""
+            mark = self.vim_marks.get(ch)
+            if mark:
+                self.cursor_x, self.cursor_y = mark
+                self.keep_cursor_visible()
+                self._log(f"Jumped to mark {ch}.")
+            else:
+                self._log(f"Mark {ch} is not set.")
+            return "handled"
+
+        if ch.isdigit() and (ch != "0" or self.vim_count):
+            self.vim_count += ch
+            return "handled"
+
+        count = int(self.vim_count) if self.vim_count else 1
+        self.vim_count = ""
+        if ch in ("h", "j", "k", "l"):
+            dx, dy = {"h": (-count, 0), "j": (0, count), "k": (0, -count), "l": (count, 0)}[ch]
+            self.move_cursor(dx, dy)
+            return "handled"
+        if ch == "g":
+            self.vim_pending = "g"
+            return "handled"
+        if ch == "G":
+            self.jump_to_alert_or_enemy()
+            return "handled"
+        if ch == "m":
+            self.vim_pending = "m"
+            return "handled"
+        if ch == "'":
+            self.vim_pending = "'"
+            return "handled"
+        if count > 1 and ch == "v":
+            self.queue_selected_production("villager", count, queue_payload)
+            return "handled"
+        if count > 1 and ch == "s":
+            self.queue_selected_production("military", count, queue_payload)
+            return "handled"
+        return None
+
+    def handle_command_mode_input(
+        self,
+        key: int,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> Optional[str]:
+        if key in (27,):
+            self.command_mode = False
+            self.command_buffer = ""
+            self._log("Command cancelled.")
+            return "handled"
+        if key in (10, 13, curses.KEY_ENTER):
+            text = self.command_buffer.strip()
+            self.command_mode = False
+            self.command_buffer = ""
+            if not text:
+                return "handled"
+            return self.execute_colon_command(text, queue_payload)
+        if key in (curses.KEY_BACKSPACE, 127, 8):
+            self.command_buffer = self.command_buffer[:-1]
+            return "handled"
+        if 0 <= key < 256:
+            ch = chr(key)
+            if ch.isprintable() and len(self.command_buffer) < 96:
+                self.command_buffer += ch
+            return "handled"
+        return "handled"
+
+    def execute_colon_command(
+        self,
+        text: str,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]] = None,
+        from_repeat: bool = False,
+    ) -> Optional[str]:
+        command = text.strip()
+        if not command:
+            return "handled"
+        lowered = command.lower()
+        if lowered in ("q", "quit", "leave"):
+            return "quit"
+        if lowered in ("help", "commands"):
+            self._log("Agent commands: select, gather, attack, queue, build, jump, mark.")
+            return "handled"
+        tokens = lowered.split()
+        if not tokens:
+            return "handled"
+        handled = False
+        if tokens[0] == "select":
+            handled = self.command_select(tokens[1:])
+        elif tokens[0] == "gather":
+            handled = self.command_gather(tokens[1:], queue_payload)
+        elif tokens[0] == "attack":
+            handled = self.command_attack(tokens[1:], queue_payload)
+        elif tokens[0] == "queue":
+            handled = self.command_queue(tokens[1:], queue_payload)
+        elif tokens[0] == "build":
+            handled = self.command_build(tokens[1:], queue_payload)
+        elif tokens[0] == "jump":
+            handled = self.command_jump(tokens[1:])
+        elif tokens[0] == "mark":
+            handled = self.command_mark(tokens[1:])
+        elif tokens[0] == "move":
+            handled = self.command_move(tokens[1:], queue_payload)
+        if handled:
+            if not from_repeat:
+                self.last_colon_command = command
+            return "handled"
+        self._log("Unknown command. Try :help.")
+        return "handled"
+
+    def emit_player_command(
+        self,
+        payload: Dict[str, object],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> None:
+        payload["owner"] = self.local_player_id
+        if queue_payload is not None:
+            queue_payload(payload)
+        else:
+            self.apply_command(payload)
+
+    def selected_owned_units(self) -> List[Unit]:
+        units: List[Unit] = []
+        seen: Set[int] = set()
+        for unit_id in self.selected_unit_ids:
+            unit = self.units.get(unit_id)
+            if unit and unit.owner == self.local_player_id and unit.id not in seen:
+                units.append(unit)
+                seen.add(unit.id)
+        selected = self.get_selected()
+        if isinstance(selected, Unit) and selected.owner == self.local_player_id and selected.id not in seen:
+            units.append(selected)
+        self.selected_unit_ids = [unit.id for unit in units if unit.hp > 0]
+        return [unit for unit in units if unit.hp > 0]
+
+    def set_selected_units(self, units: List[Unit]) -> bool:
+        owned = [unit for unit in units if unit.owner == self.local_player_id and unit.hp > 0]
+        if not owned:
+            self._log("No matching units found.")
+            return False
+        self.selected_unit_ids = [unit.id for unit in owned]
+        first = owned[0]
+        self.selected_kind = "unit"
+        self.selected_id = first.id
+        self.cursor_x = first.x
+        self.cursor_y = first.y
+        self.build_menu_open = False
+        self.keep_cursor_visible()
+        label = first.name if len(owned) == 1 else f"{len(owned)} units"
+        self._log(f"Selected {label}.")
+        return True
+
+    def command_count(self, tokens: List[str], default: int = 1) -> int:
+        for token in reversed(tokens):
+            if token.isdigit():
+                return max(1, min(50, int(token)))
+        return default
+
+    def owned_units_matching(self, tokens: List[str]) -> List[Unit]:
+        idle = "idle" in tokens
+        army = "army" in tokens or "military" in tokens
+        kind: Optional[str] = None
+        if any(token in tokens for token in ("villager", "villagers", "worker", "workers")):
+            kind = "villager"
+        elif "scout" in tokens:
+            kind = "scout"
+        elif any(token in tokens for token in ("clubman", "axeman", "swordsman")):
+            kind = next(token for token in tokens if token in ("clubman", "axeman", "swordsman"))
+        units = [unit for unit in self.units.values() if unit.owner == self.local_player_id and unit.hp > 0]
+        if army:
+            units = [unit for unit in units if unit.kind != "villager"]
+        if kind:
+            units = [unit for unit in units if unit.kind == kind]
+        if idle:
+            units = [unit for unit in units if unit.state == "idle"]
+        units.sort(key=lambda unit: (abs(unit.x - self.cursor_x) + abs(unit.y - self.cursor_y), unit.id))
+        return units
+
+    def owned_building_matching(self, tokens: List[str]) -> Optional[Building]:
+        aliases = {
+            "tc": "town_center",
+            "town_center": "town_center",
+            "town": "town_center",
+            "barracks": "barracks",
+            "mill": "mill",
+            "lumber": "lumber_camp",
+            "lumber_camp": "lumber_camp",
+            "house": "house",
+        }
+        kind = next((aliases[token] for token in tokens if token in aliases), None)
+        if not kind:
+            return None
+        buildings = [
+            building
+            for building in self.buildings.values()
+            if building.owner == self.local_player_id and building.kind == kind
+        ]
+        if not buildings:
+            return None
+        buildings.sort(key=lambda building: (abs(building.x - self.cursor_x) + abs(building.y - self.cursor_y), building.id))
+        return buildings[0]
+
+    def command_select(self, tokens: List[str]) -> bool:
+        building = self.owned_building_matching(tokens)
+        if building:
+            self.selected_kind = "building"
+            self.selected_id = building.id
+            self.selected_unit_ids = []
+            self.cursor_x = building.x
+            self.cursor_y = building.y
+            self.keep_cursor_visible()
+            self._log(f"Selected {building.name}.")
+            return True
+        units = self.owned_units_matching(tokens)
+        if not units:
+            return False
+        default_count = len(units) if any(token in tokens for token in ("all", "army", "military")) else 1
+        count = self.command_count(tokens, default_count)
+        return self.set_selected_units(units[:count])
+
+    def resource_kind_from_tokens(self, tokens: List[str]) -> Optional[str]:
+        if any(token in tokens for token in ("wood", "tree", "trees")):
+            return "tree"
+        if any(token in tokens for token in ("food", "berry", "berries")):
+            return "berries"
+        if any(token in tokens for token in ("gazelle", "hunt")):
+            return "gazelle"
+        if "gold" in tokens:
+            return "gold"
+        if "stone" in tokens:
+            return "stone"
+        return None
+
+    def group_origin(self, units: List[Unit]) -> Tuple[int, int]:
+        if not units:
+            return (self.cursor_x, self.cursor_y)
+        return (sum(unit.x for unit in units) // len(units), sum(unit.y for unit in units) // len(units))
+
+    def nearest_resource_node(self, kind: Optional[str], origin: Tuple[int, int]) -> Optional[Tuple[int, ResourceNode]]:
+        candidates: List[Tuple[int, ResourceNode]] = []
+        for rid, node in self.resources.items():
+            if kind and node.kind != kind:
+                continue
+            if node.amount <= 0 and node.kind != "gazelle":
+                continue
+            if node.kind == "gazelle" and not node.alive and not node.gatherable:
+                continue
+            pos = (node.x, node.y)
+            if pos not in self.current_player().visible and rid not in self.current_player().discovered_resources:
+                continue
+            candidates.append((rid, node))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (abs(item[1].x - origin[0]) + abs(item[1].y - origin[1]), item[0]))
+        return candidates[0]
+
+    def command_gather(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        units = [unit for unit in self.selected_owned_units() if unit.kind == "villager"]
+        if not units:
+            self._log("Select villagers before gathering.")
+            return True
+        resource = self.nearest_resource_node(self.resource_kind_from_tokens(tokens), self.group_origin(units))
+        if not resource:
+            self._log("No known matching resource.")
+            return True
+        _, node = resource
+        for unit in units:
+            self.emit_player_command({"kind": "context", "unit_id": unit.id, "x": node.x, "y": node.y}, queue_payload)
+        self._log(f"Sent {len(units)} villager(s) to {node.name}.")
+        return True
+
+    def nearest_visible_enemy(self, tokens: List[str], origin: Tuple[int, int]) -> Optional[Tuple[int, int, str]]:
+        want_building = "building" in tokens or "buildings" in tokens
+        want_tc = "tc" in tokens or "town_center" in tokens
+        want_villager = any(token in tokens for token in ("villager", "villagers", "worker", "workers", "enemy_villager"))
+        options: List[Tuple[int, int, str, int]] = []
+        if not want_building and not want_tc:
+            for unit in self.units.values():
+                if unit.owner == self.local_player_id or unit.hp <= 0:
+                    continue
+                if not self.tile_visible_to(self.local_player_id, unit.x, unit.y):
+                    continue
+                if want_villager and unit.kind != "villager":
+                    continue
+                priority = 0 if unit.kind == "villager" else 1
+                options.append((unit.x, unit.y, unit.name, priority))
+        if not want_villager:
+            for building in self.buildings.values():
+                if building.owner == self.local_player_id or not self.tile_visible_to(self.local_player_id, building.x, building.y):
+                    continue
+                if want_tc and building.kind != "town_center":
+                    continue
+                priority = 0 if not building.complete else 2
+                options.append((building.x, building.y, building.name, priority))
+        if not options:
+            return None
+        options.sort(key=lambda item: (item[3], abs(item[0] - origin[0]) + abs(item[1] - origin[1]), item[2]))
+        x, y, name, _ = options[0]
+        return (x, y, name)
+
+    def command_attack(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        units = self.owned_units_matching(["army"]) if "army" in tokens or "military" in tokens else self.selected_owned_units()
+        units = [unit for unit in units if unit.kind != "villager" or "villager" in tokens]
+        if not units:
+            self._log("No selected attackers.")
+            return True
+        target = self.nearest_visible_enemy(tokens, self.group_origin(units))
+        if not target:
+            self._log("No visible matching enemy.")
+            return True
+        x, y, name = target
+        for unit in units:
+            self.emit_player_command({"kind": "context", "unit_id": unit.id, "x": x, "y": y}, queue_payload)
+        self._log(f"Sent {len(units)} unit(s) to attack {name}.")
+        return True
+
+    def command_move(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        units = self.selected_owned_units()
+        if not units:
+            self._log("No selected units to move.")
+            return True
+        for unit in units:
+            self.emit_player_command({"kind": "context", "unit_id": unit.id, "x": self.cursor_x, "y": self.cursor_y}, queue_payload)
+        self._log(f"Moved {len(units)} unit(s) to cursor.")
+        return True
+
+    def command_queue(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        count = self.command_count(tokens)
+        if any(token in tokens for token in ("villager", "villagers", "worker", "workers")):
+            building = self.owned_building_matching(tokens) or self.owned_building_matching(["tc"])
+            if not building:
+                self._log("No Town Center found.")
+                return True
+            for _ in range(count):
+                self.emit_player_command({"kind": "queue_villager", "building_id": building.id}, queue_payload)
+            self._log(f"Submitted villager queue x{count}.")
+            return True
+        if any(token in tokens for token in ("soldier", "soldiers", "military", "unit", "units")):
+            building = self.owned_building_matching(tokens) or self.owned_building_matching(["barracks"])
+            if not building:
+                self._log("No Barracks found.")
+                return True
+            for _ in range(count):
+                self.emit_player_command({"kind": "queue_military", "building_id": building.id}, queue_payload)
+            self._log(f"Submitted military queue x{count}.")
+            return True
+        return False
+
+    def building_kind_from_tokens(self, tokens: List[str]) -> Optional[str]:
+        aliases = {
+            "house": "house",
+            "h": "house",
+            "lumber": "lumber_camp",
+            "lumber_camp": "lumber_camp",
+            "camp": "lumber_camp",
+            "mill": "mill",
+            "barracks": "barracks",
+            "rax": "barracks",
+        }
+        return next((aliases[token] for token in tokens if token in aliases), None)
+
+    def command_build(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        kind = self.building_kind_from_tokens(tokens)
+        if not kind:
+            return False
+        villagers = [unit for unit in self.selected_owned_units() if unit.kind == "villager"]
+        if not villagers:
+            villagers = self.owned_units_matching(["idle", "villager"])[:1] or self.owned_units_matching(["villager"])[:1]
+        if not villagers:
+            self._log("No villager available to build.")
+            return True
+        x, y = self.cursor_x, self.cursor_y
+        if "near" in tokens:
+            anchor = self.owned_building_matching(tokens[tokens.index("near") + 1 :]) if tokens.index("near") + 1 < len(tokens) else None
+            near_x, near_y = (anchor.x, anchor.y) if anchor else (self.cursor_x, self.cursor_y)
+            site = self.find_build_site(near_x, near_y)
+            if not site:
+                self._log("No nearby build site found.")
+                return True
+            x, y = site
+        self.emit_player_command({"kind": "build", "unit_id": villagers[0].id, "building_kind": kind, "x": x, "y": y}, queue_payload)
+        self._log(f"Submitted {BUILDING_STATS[kind]['name']} build at {x},{y}.")
+        return True
+
+    def command_jump(self, tokens: List[str]) -> bool:
+        if not tokens:
+            return False
+        if tokens[0] in self.vim_marks:
+            self.cursor_x, self.cursor_y = self.vim_marks[tokens[0]]
+            self.keep_cursor_visible()
+            self._log(f"Jumped to mark {tokens[0]}.")
+            return True
+        if tokens[0] in ("tc", "town_center", "home"):
+            self.jump_home()
+            return True
+        if tokens[0] in ("alert", "enemy"):
+            self.jump_to_alert_or_enemy()
+            return True
+        building = self.owned_building_matching(tokens)
+        if building:
+            self.cursor_x, self.cursor_y = building.x, building.y
+            self.keep_cursor_visible()
+            self._log(f"Jumped to {building.name}.")
+            return True
+        return False
+
+    def command_mark(self, tokens: List[str]) -> bool:
+        if not tokens or len(tokens[0]) != 1 or not tokens[0].isalnum():
+            self._log("Use :mark <letter>.")
+            return True
+        self.vim_marks[tokens[0]] = (self.cursor_x, self.cursor_y)
+        self._log(f"Marked {tokens[0]} at {self.cursor_x},{self.cursor_y}.")
+        return True
+
+    def queue_selected_production(
+        self,
+        kind: str,
+        count: int,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> None:
+        selected = self.get_selected()
+        if not isinstance(selected, Building) or selected.owner != self.local_player_id:
+            self._log("Select a production building first.")
+            return
+        payload_kind = "queue_villager" if kind == "villager" else "queue_military"
+        for _ in range(count):
+            self.emit_player_command({"kind": payload_kind, "building_id": selected.id}, queue_payload)
+        self._log(f"Submitted {kind} queue x{count}.")
+
+    def jump_home(self) -> None:
+        town_center = self.owned_building_matching(["tc"])
+        if not town_center:
+            self._log("No Town Center found.")
+            return
+        self.cursor_x, self.cursor_y = town_center.x, town_center.y
+        self.keep_cursor_visible()
+        self._log("Jumped home.")
+
+    def jump_to_alert_or_enemy(self) -> None:
+        target = self.nearest_visible_enemy([], (self.cursor_x, self.cursor_y))
+        if not target:
+            self._log("No visible enemy alert.")
+            return
+        self.cursor_x, self.cursor_y = target[0], target[1]
+        self.keep_cursor_visible()
+        self._log(f"Jumped to {target[2]}.")
 
     def handle_build_menu_input(self, key: int) -> None:
         if key == ord("q"):
@@ -976,29 +1850,37 @@ class Game:
         self._log("Build menu: 1 House, 2 Lumber Camp, 3 Mill, 4 Barracks.")
 
     def select_at_cursor(self) -> None:
+        pos = (self.cursor_x, self.cursor_y)
+        visible = self.current_player().visible
         unit = self.unit_at(self.cursor_x, self.cursor_y)
-        if unit:
+        if unit and (unit.owner == self.local_player_id or pos in visible):
             self.selected_kind = "unit"
             self.selected_id = unit.id
+            self.selected_unit_ids = [unit.id] if unit.owner == self.local_player_id else []
             self.build_menu_open = False
             self._log(f"Selected {unit.name}.")
             return
         building = self.building_at(self.cursor_x, self.cursor_y)
-        if building:
+        if building and (building.owner == self.local_player_id or pos in visible):
             self.selected_kind = "building"
             self.selected_id = building.id
+            self.selected_unit_ids = []
             self.build_menu_open = False
             self._log(f"Selected {building.name}.")
             return
         resource = self.resource_at(self.cursor_x, self.cursor_y)
+        if resource and resource[0] not in self.current_player().discovered_resources and pos not in visible:
+            resource = None
         if resource:
             rid, node = resource
             self.selected_kind = "resource"
             self.selected_id = rid
+            self.selected_unit_ids = []
             self.build_menu_open = False
             self._log(f"Selected {node.name}.")
             return
         self.build_menu_open = False
+        self.selected_unit_ids = []
         self._log("Nothing here to select.")
 
     def cycle_selection(self) -> None:
@@ -1023,6 +1905,10 @@ class Game:
             self.build_menu_open = False
             self.cursor_x = entity.x
             self.cursor_y = entity.y
+            if isinstance(entity, Unit) and entity.owner == self.local_player_id:
+                self.selected_unit_ids = [entity.id]
+            else:
+                self.selected_unit_ids = []
 
     def get_selected(self) -> Optional[object]:
         if self.selected_id is None:
@@ -1047,7 +1933,7 @@ class Game:
         tx = self.cursor_x if target_x is None else target_x
         ty = self.cursor_y if target_y is None else target_y
         enemy_unit = self.unit_at(tx, ty)
-        if enemy_unit and enemy_unit.owner != unit.owner:
+        if enemy_unit and enemy_unit.owner != unit.owner and self.tile_visible_to(unit.owner, tx, ty):
             unit.state = "attack"
             unit.target = ("unit", enemy_unit.id)
             unit.destination = None
@@ -1352,7 +2238,9 @@ class Game:
         self.update_units()
         self.update_ai()
         self.cleanup_destroyed()
+        self.prune_damage_flashes()
         self.reveal_visibility()
+        self.sanitize_selection_visibility()
         self.check_victory()
         self.keep_cursor_visible()
 
@@ -1403,6 +2291,7 @@ class Game:
         for unit in ordered:
             if unit.attack_cooldown > 0:
                 unit.attack_cooldown -= 1
+            self.auto_acquire_visible_enemy(unit)
             if unit.state == "move":
                 self.step_toward_destination(unit)
             elif unit.state in ("gather", "hunt"):
@@ -1413,6 +2302,39 @@ class Game:
                 self.update_builder(unit)
             elif unit.state == "attack":
                 self.update_attack(unit)
+
+    def auto_acquire_visible_enemy(self, unit: Unit) -> None:
+        if unit.kind == "villager" or unit.state == "attack" or unit.hp <= 0:
+            return
+        target = self.closest_visible_enemy_unit(unit)
+        if not target:
+            return
+        unit.state = "attack"
+        unit.target = ("unit", target.id)
+        unit.destination = None
+        unit.build_target = None
+        unit.gather_progress = 0.0
+
+    def closest_visible_enemy_unit(self, unit: Unit) -> Optional[Unit]:
+        enemies = [
+            enemy
+            for enemy in self.units.values()
+            if enemy.owner != unit.owner
+            and enemy.hp > 0
+            and self.distance(unit.x, unit.y, enemy.x, enemy.y) <= unit.vision
+            and self.tile_visible_to(unit.owner, enemy.x, enemy.y)
+        ]
+        if not enemies:
+            return None
+        enemies.sort(
+            key=lambda enemy: (
+                self.distance(unit.x, unit.y, enemy.x, enemy.y),
+                0 if enemy.kind == "villager" else 1,
+                enemy.hp,
+                enemy.id,
+            )
+        )
+        return enemies[0]
 
     def step_toward_destination(self, unit: Unit) -> None:
         if not unit.destination:
@@ -1544,6 +2466,8 @@ class Game:
             return
         damage = unit.attack + self.players[unit.owner].military_level
         target_obj.hp -= damage
+        self.mark_damage(target_kind, target_id)
+        self.handle_combat_damage(unit, target_kind, target_obj)
         if target_kind == "resource" and target_obj.hp <= 0:
             target_obj.alive = False
             target_obj.gatherable = False
@@ -1552,6 +2476,58 @@ class Game:
             self._log(f"{self.players[unit.owner].name}'s {unit.name} killed a gazelle.", player_id=unit.owner)
             return
         unit.attack_cooldown = 10
+
+    def handle_combat_damage(self, attacker: Unit, target_kind: str, target_obj: object) -> None:
+        if target_kind not in ("unit", "building") or not isinstance(target_obj, (Unit, Building)):
+            return
+        defender_owner = target_obj.owner
+        if defender_owner == attacker.owner or not self.is_ai_owner(defender_owner):
+            return
+        self.ai_respond_to_attack(defender_owner, attacker, target_obj)
+
+    def is_ai_owner(self, owner: int) -> bool:
+        return self.enable_ai and owner != self.local_player_id
+
+    def ai_order_attack_unit(self, unit: Unit, target: Unit) -> None:
+        unit.state = "attack"
+        unit.target = ("unit", target.id)
+        unit.destination = None
+        unit.build_target = None
+        unit.gather_progress = 0.0
+
+    def ai_respond_to_attack(self, owner: int, attacker: Unit, target_obj: object) -> None:
+        if attacker.hp <= 0:
+            return
+        if isinstance(target_obj, Unit) and target_obj.owner == owner and target_obj.hp > 0:
+            self.ai_order_attack_unit(target_obj, attacker)
+
+        tx = target_obj.x if isinstance(target_obj, (Unit, Building)) else attacker.x
+        ty = target_obj.y if isinstance(target_obj, (Unit, Building)) else attacker.y
+        military: List[Unit] = []
+        workers: List[Unit] = []
+        for defender in self.units.values():
+            if defender.owner != owner or defender.id == attacker.id or defender.hp <= 0:
+                continue
+            if isinstance(target_obj, Unit) and defender.id == target_obj.id:
+                continue
+            target_distance = self.distance(defender.x, defender.y, tx, ty)
+            attacker_distance = self.distance(defender.x, defender.y, attacker.x, attacker.y)
+            if defender.kind == "villager":
+                if min(target_distance, attacker_distance) <= 7:
+                    workers.append(defender)
+            elif min(target_distance, attacker_distance) <= 13:
+                military.append(defender)
+
+        military.sort(key=lambda unit: self.distance(unit.x, unit.y, attacker.x, attacker.y))
+        workers.sort(key=lambda unit: self.distance(unit.x, unit.y, attacker.x, attacker.y))
+        responders = military[:5] + workers[:4]
+        for defender in responders:
+            self.ai_order_attack_unit(defender, attacker)
+
+        key = f"last_defense_log_{owner}"
+        if responders and self.tick - self.ai_memory.get(key, -999) > 30:
+            self.ai_memory[key] = self.tick
+            self._log(f"{self.players[owner].name} calls nearby units to defend.", player_id=owner)
 
     def move_unit_toward(self, unit: Unit, destination: Tuple[int, int], adjacent: bool = False) -> None:
         tx, ty = destination
@@ -1595,6 +2571,7 @@ class Game:
         dead_units = [unit_id for unit_id, unit in self.units.items() if unit.hp <= 0]
         for unit_id in dead_units:
             unit = self.units.pop(unit_id)
+            self.damage_flashes.pop(self.damage_flash_key("unit", unit_id), None)
             if (self.selected_kind, self.selected_id) == ("unit", unit_id):
                 self.selected_kind = None
                 self.selected_id = None
@@ -1602,6 +2579,7 @@ class Game:
         dead_buildings = [bid for bid, building in self.buildings.items() if building.hp <= 0]
         for bid in dead_buildings:
             building = self.buildings.pop(bid)
+            self.damage_flashes.pop(self.damage_flash_key("building", bid), None)
             if building.complete:
                 self.players[building.owner].pop_cap -= building.pop_bonus
             if (self.selected_kind, self.selected_id) == ("building", bid):
@@ -1727,12 +2705,119 @@ class Game:
                         worker.target = ("resource", rid)
                         worker.state = "hunt" if target.kind == "gazelle" and target.alive else "gather"
         army = [unit for unit in self.units.values() if unit.owner == 1 and unit.kind != "villager"]
-        target_tc = next((b for b in self.buildings.values() if b.owner == 0 and b.kind == "town_center"), None)
-        if army and target_tc and (len(army) >= 4 or self.tick - self.ai_memory["last_attack_tick"] > 170):
-            self.ai_memory["last_attack_tick"] = self.tick
-            for soldier in army:
-                soldier.state = "attack"
-                soldier.target = ("building", target_tc.id)
+        target = self.ai_choose_attack_target(1, army)
+        if target and army and self.tick - self.ai_memory["last_attack_tick"] > 32:
+            attackers = self.ai_attackers_for_target(army, target)
+            if attackers:
+                self.ai_memory["last_attack_tick"] = self.tick
+                for soldier in attackers:
+                    soldier.state = "attack"
+                    soldier.target = target
+                    soldier.destination = None
+        self.ai_scout_with_idle_units(1, army, tc)
+
+    def ai_choose_attack_target(self, owner: int, army: List[Unit]) -> Optional[Tuple[str, int]]:
+        visible_enemy_units = [
+            unit
+            for unit in self.units.values()
+            if unit.owner != owner and self.tile_visible_to(owner, unit.x, unit.y)
+        ]
+        if visible_enemy_units:
+            visible_enemy_units.sort(
+                key=lambda unit: (
+                    0 if unit.kind == "villager" else 1,
+                    unit.hp,
+                    self.ai_army_distance(army, unit.x, unit.y),
+                )
+            )
+            return ("unit", visible_enemy_units[0].id)
+
+        visible_enemy_buildings = [
+            building
+            for building in self.buildings.values()
+            if building.owner != owner and self.tile_visible_to(owner, building.x, building.y)
+        ]
+        if not visible_enemy_buildings:
+            return None
+
+        ready_for_base_push = len(army) >= 4
+        building_targets = [
+            building
+            for building in visible_enemy_buildings
+            if building.kind != "town_center" or ready_for_base_push
+        ]
+        if not building_targets:
+            return None
+
+        building_targets.sort(
+            key=lambda building: (
+                0 if not building.complete else 1,
+                1 if building.kind in ("mill", "lumber_camp", "barracks") else 2,
+                building.hp,
+                self.ai_army_distance(army, building.x, building.y),
+            )
+        )
+        return ("building", building_targets[0].id)
+
+    def ai_attackers_for_target(self, army: List[Unit], target: Tuple[str, int]) -> List[Unit]:
+        if target[0] == "building":
+            building = self.buildings.get(target[1])
+            if not building:
+                return []
+            if building.kind == "town_center" and len(army) < 4:
+                return []
+            if building.kind != "town_center" and len(army) == 1 and army[0].kind == "scout":
+                return []
+        if target[0] == "unit":
+            unit = self.units.get(target[1])
+            if not unit:
+                return []
+            if unit.kind != "villager" and len(army) < 2:
+                return []
+        return [
+            unit
+            for unit in army
+            if unit.state != "attack" or unit.target != target
+        ]
+
+    def ai_army_distance(self, army: List[Unit], x: int, y: int) -> int:
+        if not army:
+            return MAP_WIDTH + MAP_HEIGHT
+        return min(abs(unit.x - x) + abs(unit.y - y) for unit in army)
+
+    def ai_scout_with_idle_units(self, owner: int, army: List[Unit], tc: Optional[Building]) -> None:
+        if self.tick - self.ai_memory.get("last_scout_tick", -999) < 36:
+            return
+        scouts = [unit for unit in army if unit.kind == "scout" and unit.state in ("idle", "move")]
+        if not scouts:
+            return
+        waypoints = self.ai_scout_waypoints(owner, tc)
+        if not waypoints:
+            return
+        self.ai_memory["last_scout_tick"] = self.tick
+        for scout in scouts:
+            if scout.destination and self.distance(scout.x, scout.y, scout.destination[0], scout.destination[1]) > 2:
+                continue
+            target_x, target_y = self.rng.choice(waypoints)
+            scout.state = "move"
+            scout.destination = (target_x, target_y)
+            scout.target = None
+
+    def ai_scout_waypoints(self, owner: int, tc: Optional[Building]) -> List[Tuple[int, int]]:
+        waypoints: List[Tuple[int, int]] = []
+        if tc:
+            for node in self.resources.values():
+                if 7 <= abs(node.x - tc.x) + abs(node.y - tc.y) <= 28:
+                    waypoints.append((node.x, node.y))
+        for enemy_tc in self.buildings.values():
+            if enemy_tc.owner != owner and enemy_tc.kind == "town_center":
+                for dx, dy in [(-7, -4), (-5, 6), (6, -5), (7, 4)]:
+                    x = max(1, min(MAP_WIDTH - 2, enemy_tc.x + dx))
+                    y = max(1, min(MAP_HEIGHT - 2, enemy_tc.y + dy))
+                    if self.tile_open(x, y):
+                        waypoints.append((x, y))
+        waypoints.extend([(8, 8), (MAP_WIDTH - 9, 8), (8, MAP_HEIGHT - 9), (MAP_WIDTH - 9, MAP_HEIGHT - 9)])
+        return waypoints
 
     def idle_worker(self, owner: int) -> Optional[Unit]:
         workers = [unit for unit in self.units.values() if unit.owner == owner and unit.kind == "villager" and unit.state in ("idle", "gather", "hunt", "return")]
@@ -1792,30 +2877,68 @@ class Game:
         self.stdscr.erase()
         height, width = self.stdscr.getmaxyx()
         if height < 22 or width < 90:
-            self.stdscr.addstr(0, 0, "Resize terminal to at least 90x22.")
+            self.safe_addstr(0, 0, "Resize terminal to at least 90x22.", self.theme_attr(PAIR_ALERT, curses.A_BOLD))
             self.stdscr.refresh()
             return
-        sidebar = 31
-        map_w = max(20, (width - sidebar) // TILE_WIDTH)
-        map_h = height - 9
-        map_screen_w = map_w * TILE_WIDTH
+        log_h = LOG_LIMIT + 2
+        content_h = height - log_h
+        sidebar_w = 36
+        max_map_panel_w = max(24, width - sidebar_w)
+        map_w = max(20, (max_map_panel_w - 2) // TILE_WIDTH)
+        map_panel_w = min(max_map_panel_w, map_w * TILE_WIDTH + 2)
+        sidebar_x = map_panel_w
+        sidebar_w = width - sidebar_x
+        map_h = max(8, content_h - 2)
         player = self.current_player()
         self.camera_x = min(self.camera_x, max(0, MAP_WIDTH - map_w))
         self.camera_y = min(self.camera_y, max(0, MAP_HEIGHT - map_h))
-        self.draw_map(map_w, map_h)
-        self.draw_sidebar(map_screen_w, sidebar, height)
-        self.draw_log(height, width)
+        self.draw_box(
+            0,
+            0,
+            content_h,
+            map_panel_w,
+            "Battlefield",
+            border_attr=self.theme_attr(PAIR_PANEL),
+            title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+            fill_attr=self.theme_attr(PAIR_UNSEEN),
+        )
+        self.draw_box(
+            0,
+            sidebar_x,
+            content_h,
+            sidebar_w,
+            f"{player.name} · {player.civ}",
+            border_attr=self.theme_attr(PAIR_PANEL),
+            title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+        )
+        self.draw_map(1, 1, map_w, map_h)
+        self.draw_sidebar(sidebar_x + 1, 1, sidebar_w - 2, content_h - 2)
+        self.draw_log(content_h, width, log_h)
         if self.winner is not None:
             overlay = f"{self.players[self.winner].name} wins. Press q."
-            self.stdscr.addstr(map_h // 2, max(0, map_screen_w // 2 - len(overlay) // 2), overlay, curses.A_BOLD)
-        elif player.ageing:
-            text = f"Aging: {AGE_NAMES[player.age + 1]} ({player.ageing.time_left})"
-            self.stdscr.addstr(map_h, 0, text)
+            overlay_w = min(map_panel_w - 4, max(28, len(overlay) + 6))
+            overlay_y = max(1, (content_h - 5) // 2)
+            overlay_x = max(2, (map_panel_w - overlay_w) // 2)
+            self.draw_box(
+                overlay_y,
+                overlay_x,
+                5,
+                overlay_w,
+                "Empire Falls",
+                border_attr=self.theme_attr(PAIR_ALERT),
+                title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+                fill_attr=self.theme_attr(PAIR_UNSEEN),
+            )
+            self.safe_addstr(overlay_y + 2, overlay_x + 3, overlay[: max(0, overlay_w - 6)], self.theme_attr(PAIR_ALERT, curses.A_BOLD))
         self.stdscr.refresh()
 
-    def draw_map(self, map_w: int, map_h: int) -> None:
+    def draw_map(self, origin_y: int, origin_x: int, map_w: int, map_h: int) -> None:
         visible = self.current_player().visible
         explored = self.current_player().explored
+        selected = self.get_selected()
+        selected_pos = None
+        if isinstance(selected, (Unit, Building, ResourceNode)):
+            selected_pos = (selected.x, selected.y)
         for sy in range(map_h):
             wy = self.camera_y + sy
             if wy >= MAP_HEIGHT:
@@ -1824,107 +2947,182 @@ class Game:
                 wx = self.camera_x + sx
                 if wx >= MAP_WIDTH:
                     continue
-                ch = "."
-                attr = curses.color_pair(0)
+                ch = "  "
+                attr = self.theme_attr(PAIR_UNSEEN)
+                damage_entity: Optional[Tuple[str, int]] = None
                 if not explored[wy][wx]:
-                    ch = " "
+                    ch = "  "
                 else:
                     resource = self.resource_at(wx, wy)
                     building = self.building_at(wx, wy)
                     unit = self.unit_at(wx, wy)
                     if (wx, wy) in visible:
+                        attr = self.theme_attr(PAIR_GRASS)
                         if resource:
                             _, node = resource
                             ch = node.glyph
-                            if node.kind == "gazelle":
-                                attr = curses.color_pair(3)
+                            if node.kind == "tree":
+                                attr = self.theme_attr(PAIR_TREE, curses.A_BOLD)
+                            elif node.kind == "berries":
+                                attr = self.theme_attr(PAIR_BERRY, curses.A_BOLD)
                             elif node.kind == "gold":
-                                attr = curses.color_pair(3)
+                                attr = self.theme_attr(PAIR_GOLD, curses.A_BOLD)
                             elif node.kind == "stone":
-                                attr = curses.color_pair(6)
+                                attr = self.theme_attr(PAIR_STONE, curses.A_BOLD)
                             else:
-                                attr = curses.color_pair(1)
+                                attr = self.theme_attr(PAIR_GAZELLE, curses.A_BOLD)
                         if building:
                             ch = building.glyph
-                            attr = self.owner_color_pair(building.owner)
+                            attr = self.owner_color_pair(building.owner) | curses.A_BOLD
+                            damage_entity = ("building", building.id)
+                            if not building.complete:
+                                attr = self.theme_attr(PAIR_ALERT, curses.A_BOLD)
                         if unit:
                             ch = unit.glyph.upper() if unit.owner == self.local_player_id else unit.glyph
-                            attr = self.owner_color_pair(unit.owner)
+                            attr = self.owner_color_pair(unit.owner) | curses.A_BOLD
+                            damage_entity = ("unit", unit.id)
+                        if damage_entity:
+                            remaining = self.damage_flash_remaining(*damage_entity)
+                            if remaining > 0:
+                                if remaining > DAMAGE_FLASH_TICKS - DAMAGE_MARKER_TICKS:
+                                    ch = "!!"
+                                    attr = self.theme_attr(PAIR_DAMAGE, curses.A_BOLD)
+                                elif (remaining // 2) % 2 == 0:
+                                    attr = self.theme_attr(PAIR_DAMAGE, curses.A_BOLD)
+                                else:
+                                    attr |= curses.A_REVERSE | curses.A_BOLD
                     else:
-                        ch = ","
+                        remembered_resource = self.resource_memory_at(self.local_player_id, wx, wy)
+                        if remembered_resource:
+                            _, node = remembered_resource
+                            ch = node.glyph
+                            attr = self.remembered_resource_attr(node.kind)
+                        else:
+                            ch = "░░"
+                            attr = self.theme_attr(PAIR_FOG, curses.A_DIM)
                 text = self.cell_text(ch)
+                if selected_pos == (wx, wy):
+                    attr |= curses.A_BOLD
                 if wx == self.cursor_x and wy == self.cursor_y:
-                    attr |= curses.A_REVERSE
-                self.stdscr.addstr(sy, sx * TILE_WIDTH, text, attr)
+                    attr |= curses.A_REVERSE | curses.A_BOLD
+                self.safe_addstr(origin_y + sy, origin_x + (sx * TILE_WIDTH), text, attr)
 
-    def draw_sidebar(self, map_screen_w: int, sidebar: int, height: int) -> None:
-        x0 = map_screen_w + 1
+    def draw_sidebar(self, x0: int, y0: int, width: int, height: int) -> None:
         player = self.current_player()
-        lines = [
-            "SSH of Empires",
-            "",
-            f"Civ: {player.civ}",
-            f"Age: {AGE_NAMES[player.age]}",
-            f"Food: {player.food}",
-            f"Wood: {player.wood}",
-            f"Gold: {player.gold}",
-            f"Stone: {player.stone}",
-            f"Pop: {self.player_population(self.local_player_id)}/{player.pop_cap}",
-            "",
-        ]
-        opponents = [other for other in self.players if other.id != self.local_player_id]
-        for other in opponents[:2]:
-            lines.extend(
-                [
-                    f"{other.name}: {other.civ}",
-                    f"{other.name} age: {AGE_NAMES[other.age]}",
-                    "",
-                ]
-            )
-        selected = self.get_selected()
-        lines.extend(["", "Selected:"])
-        lines.append(self.entity_summary(selected) if selected else "None")
-        if self.build_menu_open:
-            lines.extend(
-                [
-                    "",
-                    "Build Menu:",
-                    "1/h House (35W)",
-                    "2/l Lumber (70W)",
-                    "3/m Mill (60W)",
-                    "4/r Barracks (90W)",
-                    "b/x/Esc close",
-                ]
-            )
-        lines.extend(
-            [
-                "",
-                "Keys:",
-                "Arrows/^B^F^P^N move",
-                "Shift+Arrows fast",
-                "<space> select",
-                "Tab cycle owned",
-                "a action",
-                "^Space action alt",
-                "b build menu",
-                "v villager",
-                "s soldier",
-                "n next age",
-                "t tech",
-                "x/Esc clear",
-                "q quit",
-            ]
+        y = y0
+        max_y = y0 + height
+
+        def add_line(text: str, attr: Optional[int] = None) -> bool:
+            nonlocal y
+            if y >= max_y:
+                return False
+            self.safe_addstr(y, x0, text[:width], self.theme_attr(PAIR_TEXT) if attr is None else attr)
+            y += 1
+            return True
+
+        def add_header(title: str) -> bool:
+            nonlocal y
+            if y >= max_y:
+                return False
+            label = f" {title.upper()} "
+            filler = "·" * max(0, width - len(label))
+            self.safe_addstr(y, x0, label[:width], self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD))
+            if len(label) < width:
+                self.safe_addstr(y, x0 + len(label), filler[: width - len(label)], self.theme_attr(PAIR_PANEL_MUTED))
+            y += 1
+            return True
+
+        def add_resource_row(
+            left_label: str,
+            left_value: int,
+            left_pair: int,
+            right_label: str,
+            right_value: int,
+            right_pair: int,
+        ) -> None:
+            nonlocal y
+            if y >= max_y:
+                return
+            right_x = x0 + max(14, width // 2)
+            self.safe_addstr(y, x0, left_label, self.theme_attr(left_pair, curses.A_BOLD))
+            self.safe_addstr(y, x0 + len(left_label), f" {left_value}", self.theme_attr(PAIR_TEXT))
+            if right_x < x0 + width:
+                self.safe_addstr(y, right_x, right_label, self.theme_attr(right_pair, curses.A_BOLD))
+                self.safe_addstr(y, right_x + len(right_label), f" {right_value}", self.theme_attr(PAIR_TEXT))
+            y += 1
+
+        add_header("Empire")
+        add_line(f"Age {AGE_NAMES[player.age]}")
+        add_line(
+            f"Pop {self.player_population(self.local_player_id)}/{player.pop_cap} · "
+            f"Eco {player.economy_level}/{len(TECHS['economy']['cost'])} · "
+            f"Mil {player.military_level}/{len(TECHS['military']['cost'])}"
         )
-        for idx, line in enumerate(lines[: height - 1]):
-            if idx == 0:
-                self.stdscr.addstr(idx, x0, line[: sidebar - 1], curses.A_BOLD)
-            else:
-                self.stdscr.addstr(idx, x0, line[: sidebar - 1])
+        add_resource_row("Food", player.food, PAIR_FOOD, "Wood", player.wood, PAIR_WOOD)
+        add_resource_row("Gold", player.gold, PAIR_GOLD_TEXT, "Stone", player.stone, PAIR_STONE_TEXT)
+        if player.ageing:
+            next_age = AGE_NAMES[min(player.age + 1, len(AGE_NAMES) - 1)]
+            total = AGE_ADVANCE.get(player.age, {"time": player.ageing.time_left})["time"]
+            add_line(f"Advancing to {next_age}", self.theme_attr(PAIR_SUCCESS))
+            add_line(
+                f"{self.meter(total - player.ageing.time_left, total, max(8, min(width - 10, 16)))} "
+                f"{player.ageing.time_left:>3}t",
+                self.theme_attr(PAIR_PROMPT),
+            )
+
+        opponents = [other for other in self.players if other.id != self.local_player_id]
+        if opponents:
+            add_header("Opponents")
+            for other in opponents[:2]:
+                add_line(f"{other.name} · {other.civ}", self.owner_color_pair(other.id) | curses.A_BOLD)
+                add_line(f"Age {AGE_NAMES[other.age]}", self.theme_attr(PAIR_PANEL_MUTED))
+
+        selected = self.get_selected()
+        add_header("Selection")
+        selected_group = self.selected_owned_units()
+        if len(selected_group) > 1:
+            add_line(f"Group {len(selected_group)} units", self.theme_attr(PAIR_PROMPT))
+        for line in self.selected_panel_lines(selected, width):
+            if not add_line(line):
+                break
+
+        if self.command_mode or self.vim_count or self.vim_pending:
+            add_header("Input")
+            prefix = ":" if self.command_mode else ""
+            pending = self.command_buffer if self.command_mode else f"{self.vim_count}{self.vim_pending}"
+            add_line((prefix + pending)[: max(1, width - 2)], self.theme_attr(PAIR_PROMPT))
+
+        if self.build_menu_open:
+            add_header("Build")
+            for line in ["1/h House", "2/l Lumber", "3/m Mill", "4/r Barracks", "b/x close"]:
+                if not add_line(line, self.theme_attr(PAIR_PROMPT)):
+                    break
+
+        add_header("Cursor")
+        for line in self.wrap_panel_lines([f"{self.cursor_x},{self.cursor_y} · {self.describe_cursor_tile()[6:]}"], width):
+            if not add_line(line, self.theme_attr(PAIR_PANEL_MUTED)):
+                break
+
+        add_header("Commands")
+        command_lines = [
+            "hjkl/count · gg home",
+            ": agent command mode",
+            "Space select · a act",
+            "Selection shows actions",
+            "Tab cycle · x clear · q quit",
+        ]
+        for line in command_lines:
+            if not add_line(line, self.theme_attr(PAIR_PANEL_MUTED)):
+                break
 
     def describe_cursor_tile(self) -> str:
         visible = self.current_player().visible
         pos = (self.cursor_x, self.cursor_y)
         if pos not in visible:
+            remembered_resource = self.resource_memory_at(self.local_player_id, self.cursor_x, self.cursor_y)
+            if remembered_resource:
+                _, node = remembered_resource
+                return f"Tile: {node.visible_name()} (fog)"
             if self.current_player().explored[self.cursor_y][self.cursor_x]:
                 return "Tile: explored fog"
             return "Tile: unseen"
@@ -1942,11 +3140,30 @@ class Game:
             return f"Tile: {node.visible_name()}"
         return "Tile: grass"
 
-    def draw_log(self, height: int, width: int) -> None:
-        start = height - LOG_LIMIT - 1
-        self.stdscr.hline(start, 0, "-", width)
-        for idx, line in enumerate(self.visible_logs()[-LOG_LIMIT:]):
-            self.stdscr.addstr(start + 1 + idx, 0, line[: width - 1])
+    def draw_log(self, y0: int, width: int, height: int) -> None:
+        self.draw_box(
+            y0,
+            0,
+            height,
+            width,
+            "Chronicle",
+            border_attr=self.theme_attr(PAIR_PANEL),
+            title_attr=self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD),
+        )
+        logs = self.visible_logs()[-(height - 2) :]
+        if not logs:
+            self.safe_addstr(y0 + 1, 2, "No recent events yet.", self.theme_attr(PAIR_PANEL_MUTED))
+            return
+        inner_width = max(8, width - 4)
+        for idx, line in enumerate(logs):
+            line_y = y0 + 1 + idx
+            if line.startswith("[") and "] " in line:
+                stamp, message = line.split("] ", 1)
+                stamp += "]"
+                self.safe_addstr(line_y, 2, stamp, self.theme_attr(PAIR_PANEL_MUTED))
+                self.safe_addstr(line_y, 2 + len(stamp) + 1, message[: max(0, inner_width - len(stamp) - 1)], self.theme_attr(PAIR_TEXT))
+            else:
+                self.safe_addstr(line_y, 2, line[:inner_width], self.theme_attr(PAIR_TEXT))
 
 
 class LobbyStore:
@@ -2419,9 +3636,11 @@ class SSHOfEmpiresApp:
     def __init__(self, stdscr: curses.window) -> None:
         self.stdscr = stdscr
         self.store = LobbyStore()
+        self.theme_mode = "mono"
         if hasattr(curses, "set_escdelay"):
             curses.set_escdelay(CURSES_ESCDELAY_MS)
         self.stdscr.keypad(True)
+        self.theme_mode = initialize_terminal_theme()
 
     def safe_addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
         height, width = self.stdscr.getmaxyx()
@@ -2435,18 +3654,23 @@ class SSHOfEmpiresApp:
         except curses.error:
             pass
 
+    def theme_attr(self, pair_id: int, extra: int = 0) -> int:
+        return theme_color(pair_id) | extra
+
     def draw_box(self, y: int, x: int, h: int, w: int, title: Optional[str] = None) -> None:
         if h < 3 or w < 4:
             return
-        self.safe_addstr(y, x, "╔" + ("═" * (w - 2)) + "╗")
+        border_attr = self.theme_attr(PAIR_PANEL)
+        title_attr = self.theme_attr(PAIR_PANEL_TITLE, curses.A_BOLD)
+        self.safe_addstr(y, x, "╔" + ("═" * (w - 2)) + "╗", border_attr)
         for row in range(1, h - 1):
-            self.safe_addstr(y + row, x, "║")
-            self.safe_addstr(y + row, x + w - 1, "║")
-        self.safe_addstr(y + h - 1, x, "╚" + ("═" * (w - 2)) + "╝")
+            self.safe_addstr(y + row, x, "║", border_attr)
+            self.safe_addstr(y + row, x + w - 1, "║", border_attr)
+        self.safe_addstr(y + h - 1, x, "╚" + ("═" * (w - 2)) + "╝", border_attr)
         if title:
             label = f" {title} "
             start = x + max(1, (w - len(label)) // 2)
-            self.safe_addstr(y, start, label)
+            self.safe_addstr(y, start, label[: max(0, w - 2)], title_attr)
 
     def menu(self, title: str, options: List[str], subtitle: str = "") -> int:
         index = 0
@@ -2461,12 +3685,12 @@ class SSHOfEmpiresApp:
             x = max(2, (width - panel_w) // 2)
             self.draw_box(y, x, panel_h, panel_w, title)
             if subtitle:
-                self.safe_addstr(y + 2, x + 2, subtitle[: panel_w - 4])
+                self.safe_addstr(y + 2, x + 2, subtitle[: panel_w - 4], self.theme_attr(PAIR_PANEL_MUTED))
             for idx, option in enumerate(options):
                 prefix = "›" if idx == index else " "
-                attr = curses.A_REVERSE if idx == index else 0
+                attr = self.theme_attr(PAIR_CURSOR, curses.A_BOLD) if idx == index else self.theme_attr(PAIR_TEXT)
                 self.safe_addstr(y + 4 + idx, x + 4, f"{prefix} {option}"[: panel_w - 8], attr)
-            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Select    [ Esc ] Back")
+            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Select    [ Esc ] Back", self.theme_attr(PAIR_PANEL_MUTED))
             self.stdscr.refresh()
 
             key = self.stdscr.getch()
@@ -2500,13 +3724,13 @@ class SSHOfEmpiresApp:
             y = max(1, (height - panel_h) // 2)
             x = max(2, (width - panel_w) // 2)
             self.draw_box(y, x, panel_h, panel_w, title)
-            self.safe_addstr(y + 2, x + 2, label)
-            self.safe_addstr(y + 3, x + 2, f"> {buffer}")
+            self.safe_addstr(y + 2, x + 2, label, self.theme_attr(PAIR_TEXT))
+            self.safe_addstr(y + 3, x + 2, f"> {buffer}", self.theme_attr(PAIR_PROMPT))
             for idx, line in enumerate(footer_lines):
-                self.safe_addstr(y + 5 + idx, x + 2, line[: panel_w - 4])
+                self.safe_addstr(y + 5 + idx, x + 2, line[: panel_w - 4], self.theme_attr(PAIR_PANEL_MUTED))
             if notice:
-                self.safe_addstr(y + panel_h - 3, x + 2, notice[: panel_w - 4])
-            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Confirm    [ Esc ] Cancel")
+                self.safe_addstr(y + panel_h - 3, x + 2, notice[: panel_w - 4], self.theme_attr(PAIR_ALERT))
+            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] Confirm    [ Esc ] Cancel", self.theme_attr(PAIR_PANEL_MUTED))
             cursor_x = min(width - 1, x + 4 + len(buffer))
             self.stdscr.move(y + 3, cursor_x)
             self.stdscr.refresh()
@@ -2593,8 +3817,8 @@ class SSHOfEmpiresApp:
             x = max(2, (width - panel_w) // 2)
             self.draw_box(y, x, panel_h, panel_w, title)
             for idx, line in enumerate(lines):
-                self.safe_addstr(y + 2 + idx, x + 2, line)
-            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] OK")
+                self.safe_addstr(y + 2 + idx, x + 2, line, self.theme_attr(PAIR_TEXT))
+            self.safe_addstr(y + panel_h - 2, x + 2, "[ Enter ] OK", self.theme_attr(PAIR_PANEL_MUTED))
             self.stdscr.refresh()
             key = self.stdscr.getch()
             if key in (10, 13, curses.KEY_ENTER, 27):
@@ -2843,6 +4067,7 @@ class SSHOfEmpiresApp:
         if game.selected_id is not None and game.get_selected() is None:
             game.selected_kind = None
             game.selected_id = None
+            game.selected_unit_ids = []
             game.build_menu_open = False
         game.keep_cursor_visible()
         return game
@@ -2867,6 +4092,15 @@ class SSHOfEmpiresApp:
             if key == -1:
                 continue
             key = normalize_input_key(self.stdscr, key, TICK_MS)
+            def queue_payload(payload: Dict[str, object]) -> None:
+                self.queue_match_command(room_id, player_id, payload)
+
+            vim_result = game.handle_vim_input(key, queue_payload)
+            if vim_result == "quit":
+                self.store.leave_room(player_id)
+                return
+            if vim_result == "handled":
+                continue
             if game.build_menu_open:
                 if key == ord("q"):
                     self.store.leave_room(player_id)
@@ -2904,6 +4138,7 @@ class SSHOfEmpiresApp:
             elif key in (ord("x"), 27):
                 game.selected_kind = None
                 game.selected_id = None
+                game.selected_unit_ids = []
                 game.build_menu_open = False
             elif key in (ord("a"), curses.ascii.NUL):
                 selected = game.get_selected()

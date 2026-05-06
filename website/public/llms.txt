@@ -49,6 +49,14 @@ Starting State
 - Initial population cap is 4, so early expansion usually requires a House quickly.
 
 Important Controls
+- h / j / k / l: move cursor left / down / up / right
+- A number before h/j/k/l repeats the motion, for example 10l moves ten tiles right
+- gg: jump cursor to your Town Center
+- G: jump cursor to the nearest visible enemy alert/target
+- m<letter>: mark the current cursor tile
+- '<letter>: jump to a marked tile
+- : opens explicit command mode for agent-safe commands
+- . repeats the last successful explicit command
 - Ctrl-B / Ctrl-F / Ctrl-P / Ctrl-N: move cursor left / right / up / down
 - Space or Enter: select unit, building, or resource under cursor
 - Tab: cycle through your own units and buildings and move the cursor to the selected entity
@@ -61,7 +69,40 @@ Important Controls
 - t: research tech at a selected Mill or Barracks
 - q: quit or leave the current match
 
+Agent-Safe Command Mode
+- Press : to enter command mode, type one command, then press Enter.
+- Prefer these explicit commands over long blind key sequences.
+- Commands are semantic: they target known units, buildings, resources, enemies, or marks.
+- Commands log submitted actions or a clear failure reason in the action log.
+- Useful commands:
+  :select idle villager 3
+  :select villager 3
+  :select army
+  :select scout
+  :select town_center
+  :select barracks
+  :gather selected nearest berries
+  :gather selected nearest wood
+  :gather selected nearest gold
+  :gather selected nearest stone
+  :attack army nearest enemy_villager
+  :attack selected nearest enemy
+  :move selected cursor
+  :queue town_center villager 5
+  :queue barracks military 3
+  :build house near town_center
+  :build mill near cursor
+  :build barracks near town_center
+  :jump town_center
+  :jump barracks
+  :jump enemy
+  :mark a
+  :jump a
+- Current limitation: semantic selection can hold multiple owned units, but production buildings and building placement still resolve to one building or one builder at a time.
+
 Stateful Control Semantics
+- The selection panel shows contextual Actions for the selected unit or building.
+- For example, selecting a completed Barracks shows s Train <current infantry> and t Research Weapons.
 - Tab cycles all owned units and buildings in top-to-bottom, then left-to-right map order.
 - Buildings and units share the same Tab cycle, so repeated Tab presses can bounce between economy, military, and production structures.
 - Selection changes move the cursor, and the camera follows the cursor.

@@ -37,7 +37,9 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 ## Input Reliability
 
 - In menu screens, prefer `j` and `k` with `Enter` when the menu supports them.
+- In the live match, prefer explicit `:` commands for semantic tasks once available.
 - In the live match, use `Ctrl-B`, `Ctrl-F`, `Ctrl-P`, and `Ctrl-N` for left, right, up, and down.
+- You may also use `h` / `j` / `k` / `l` with numeric prefixes for cursor travel, for example `12l`.
 - Do not use arrow keys in automated sessions.
 - Avoid sending bare `Esc` unless you intentionally want to clear selection or close an in-game panel.
 - Use `Tab` to cycle owned units and buildings, but do not spam it blindly.
@@ -47,6 +49,11 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 
 ## Stateful Control Semantics
 
+- `:` command mode is the preferred agent interface for non-trivial actions.
+- Type one full command and press `Enter`; watch the action log before issuing the next command.
+- Prefer semantic commands such as `:select idle villager 3`, `:gather selected nearest berries`, and `:queue town_center villager 5` over cursor-only workflows.
+- Vim-style marks are useful for stable map references: use `ma` to mark the cursor and `'a` or `:jump a` to return.
+- The selection panel shows contextual `Actions`; use it to confirm which production or research key is available on a selected building.
 - `Tab` is a high-value but high-risk shortcut because villagers, scout, infantry, and buildings share the same cycle.
 - In the build menu, pressing `1` / `2` / `3` / `4` places the foundation immediately on the current cursor tile.
 - Do not press `a` after choosing a build key unless you want to issue a new command.
@@ -92,6 +99,7 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 ## Agent Tactics / Failure Modes
 
 - Once the match starts, prefer short input bursts plus confirmation instead of long blind macros.
+- Prefer explicit `:` commands over Vim macro repetition in live matches; repeat with `.` only when the previous command clearly succeeded and the game state still matches.
 - Re-acquire exact enemy tiles during combat. General movement toward an enemy is not enough to guarantee attacks.
 - Watch the log for confirmations such as `moving to x,y`, `ordered to attack ...`, `Started ... foundation.`, and production queue messages.
 - Do not assume fixed spawn orientation or a seat-based corner assignment.
@@ -99,6 +107,12 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 
 ## Control Shortlist
 
+- `h` / `j` / `k` / `l`: move cursor left / down / up / right; numeric prefixes repeat motion
+- `gg`: jump to Town Center
+- `G`: jump to nearest visible enemy target
+- `m<letter>` / `'<letter>`: set and jump to map marks
+- `:`: enter explicit command mode
+- `.`: repeat the last successful explicit command
 - `Ctrl-B` / `Ctrl-F` / `Ctrl-P` / `Ctrl-N`: move left / right / up / down
 - `Space` or `Enter`: select
 - `Tab`: cycle owned units and buildings in map order; moves cursor to the selected entity
@@ -110,3 +124,20 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 - `n`: advance age at a selected `Town Center`
 - `t`: research at a selected `Mill` or `Barracks`
 - `x` or `Esc`: clear selection
+
+## Agent-Safe Command Examples
+
+- `:select idle villager 3`
+- `:select army`
+- `:select town_center`
+- `:gather selected nearest berries`
+- `:gather selected nearest wood`
+- `:attack army nearest enemy_villager`
+- `:move selected cursor`
+- `:queue town_center villager 5`
+- `:queue barracks military 3`
+- `:build house near town_center`
+- `:build mill near cursor`
+- `:jump enemy`
+- `:mark a`
+- `:jump a`
