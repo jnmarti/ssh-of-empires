@@ -157,6 +157,10 @@ The command mode is intended for agents and power users who want semantic comman
 
 ### Production and Research
 
+The selection panel shows contextual `Actions` for the selected unit or building.
+For example, selecting a completed Barracks shows the exact infantry unit available
+for the current age and its cost.
+
 - `b`: open the villager build menu
 - `v`: queue a villager at the selected Town Center
 - `s`: queue a military unit at the selected Barracks

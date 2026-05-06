@@ -742,6 +742,7 @@ class Game:
                 lines.append(f"Target {self.describe_target_ref(obj.target)}")
             elif obj.destination:
                 lines.append(f"Move to {obj.destination[0]},{obj.destination[1]}")
+            lines.extend(self.selection_action_lines(obj))
         elif isinstance(obj, Building):
             lines.append(f"{obj.name} · {self.owner_label(obj.owner)}")
             if self.damage_flash_remaining("building", obj.id):
@@ -755,6 +756,7 @@ class Game:
                 total = self.production_total_time(obj, current)
                 lines.append(f"Queue {target} ({current.time_left}t)")
                 lines.append(f"Prod {self.meter(total - current.time_left, total, meter_w)}")
+            lines.extend(self.selection_action_lines(obj))
         elif isinstance(obj, ResourceNode):
             lines.append(obj.name)
             if obj.kind == "gazelle" and obj.alive:
@@ -763,7 +765,57 @@ class Game:
                 lines.append("No usable food remains.")
             else:
                 lines.append(f"Remaining {obj.amount}")
+            lines.extend(self.selection_action_lines(obj))
         return self.wrap_panel_lines(lines, width)
+
+    @staticmethod
+    def format_cost(cost: Dict[str, int]) -> str:
+        labels = [("food", "F"), ("wood", "W"), ("gold", "G"), ("stone", "S")]
+        parts = [f"{label}{cost.get(kind, 0)}" for kind, label in labels if cost.get(kind, 0)]
+        return " ".join(parts) if parts else "Free"
+
+    def selection_action_lines(self, obj: object) -> List[str]:
+        if isinstance(obj, Unit):
+            if obj.owner != self.local_player_id:
+                return ["Actions: select army, a attack"]
+            if obj.kind == "villager":
+                return ["Actions:", "a Move/gather/build", "b Build menu"]
+            return ["Actions:", "a Move/attack"]
+        if isinstance(obj, Building):
+            if obj.owner != self.local_player_id:
+                return ["Actions: select army, a attack"]
+            if not obj.complete:
+                return ["Actions: select villager, a build"]
+            player = self.current_player()
+            if obj.kind == "town_center":
+                actions = [f"v Train Villager {self.format_cost(UNIT_STATS['villager']['cost'])}"]
+                if player.age >= len(AGE_NAMES) - 1:
+                    actions.append("n Advance Age max")
+                elif player.ageing:
+                    actions.append("n Age in progress")
+                else:
+                    next_age = AGE_NAMES[player.age + 1]
+                    actions.append(f"n Advance {next_age} {self.format_cost(AGE_ADVANCE[player.age]['cost'])}")
+                return ["Actions:"] + actions
+            if obj.kind == "barracks":
+                kind = self.available_military(player.age)
+                stats = UNIT_STATS[kind]
+                actions = [f"s Train {stats['name']} {self.format_cost(stats['cost'])}"]
+                level = player.military_level
+                if level >= len(TECHS["military"]["cost"]):
+                    actions.append("t Weapons max")
+                else:
+                    actions.append(f"t Research Weapons {self.format_cost(TECHS['military']['cost'][level])}")
+                return ["Actions:"] + actions
+            if obj.kind == "mill":
+                level = player.economy_level
+                if level >= len(TECHS["economy"]["cost"]):
+                    return ["Actions:", "t Harvesting max"]
+                return ["Actions:", f"t Research Harvest {self.format_cost(TECHS['economy']['cost'][level])}"]
+            return ["Actions: no commands"]
+        if isinstance(obj, ResourceNode):
+            return ["Actions: select villager, a gather"]
+        return []
 
     def cell_text(self, glyph: str) -> str:
         width = self.glyph_display_width(glyph)
@@ -3056,8 +3108,7 @@ class Game:
             "hjkl/count · gg home",
             ": agent command mode",
             "Space select · a act",
-            "b build · v villager",
-            "s soldier · n age · t tech",
+            "Selection shows actions",
             "Tab cycle · x clear · q quit",
         ]
         for line in command_lines:

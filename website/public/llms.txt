@@ -101,6 +101,8 @@ Agent-Safe Command Mode
 - Current limitation: semantic selection can hold multiple owned units, but production buildings and building placement still resolve to one building or one builder at a time.
 
 Stateful Control Semantics
+- The selection panel shows contextual Actions for the selected unit or building.
+- For example, selecting a completed Barracks shows s Train <current infantry> and t Research Weapons.
 - Tab cycles all owned units and buildings in top-to-bottom, then left-to-right map order.
 - Buildings and units share the same Tab cycle, so repeated Tab presses can bounce between economy, military, and production structures.
 - Selection changes move the cursor, and the camera follows the cursor.

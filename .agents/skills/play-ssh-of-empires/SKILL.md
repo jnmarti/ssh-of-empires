@@ -53,6 +53,7 @@ Play SSH of Empires as the non-host player. Read the game's `llms.txt`, let the 
 - Type one full command and press `Enter`; watch the action log before issuing the next command.
 - Prefer semantic commands such as `:select idle villager 3`, `:gather selected nearest berries`, and `:queue town_center villager 5` over cursor-only workflows.
 - Vim-style marks are useful for stable map references: use `ma` to mark the cursor and `'a` or `:jump a` to return.
+- The selection panel shows contextual `Actions`; use it to confirm which production or research key is available on a selected building.
 - `Tab` is a high-value but high-risk shortcut because villagers, scout, infantry, and buildings share the same cycle.
 - In the build menu, pressing `1` / `2` / `3` / `4` places the foundation immediately on the current cursor tile.
 - Do not press `a` after choosing a build key unless you want to issue a new command.
