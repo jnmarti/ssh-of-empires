@@ -15,7 +15,7 @@ import time
 import unicodedata
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 
 MAP_WIDTH = 96
@@ -556,13 +556,20 @@ class Game:
         self.camera_y = 0
         self.selected_kind: Optional[str] = None
         self.selected_id: Optional[int] = None
+        self.selected_unit_ids: List[int] = []
         self.build_menu_open = False
+        self.command_mode = False
+        self.command_buffer = ""
+        self.vim_count = ""
+        self.vim_pending = ""
+        self.vim_marks: Dict[str, Tuple[int, int]] = {}
+        self.last_colon_command: Optional[str] = None
         self.running = True
         self.tick = 0
         self.winner: Optional[int] = None
         self.theme_mode = "mono"
         self.damage_flashes: Dict[str, int] = {}
-        self.ai_memory = {"last_house_tick": -999, "last_attack_tick": -999} if enable_ai else {}
+        self.ai_memory = {"last_house_tick": -999, "last_attack_tick": -999, "last_scout_tick": -999} if enable_ai else {}
         if init_world:
             self._init_world()
             self.reveal_visibility()
@@ -1217,6 +1224,12 @@ class Game:
         if key == -1:
             return
         key = normalize_input_key(self.stdscr, key, TICK_MS)
+        vim_result = self.handle_vim_input(key)
+        if vim_result == "quit":
+            self.running = False
+            return
+        if vim_result == "handled":
+            return
         if self.build_menu_open:
             self.handle_build_menu_input(key)
             return
@@ -1233,6 +1246,7 @@ class Game:
         elif key in (ord("x"), 27):
             self.selected_id = None
             self.selected_kind = None
+            self.selected_unit_ids = []
             self.build_menu_open = False
         elif key in (ord("a"), curses.ascii.NUL):
             self.issue_context_command()
@@ -1250,6 +1264,516 @@ class Game:
     def move_cursor(self, dx: int, dy: int) -> None:
         self.cursor_x = max(0, min(MAP_WIDTH - 1, self.cursor_x + dx))
         self.cursor_y = max(0, min(MAP_HEIGHT - 1, self.cursor_y + dy))
+
+    def handle_vim_input(
+        self,
+        key: int,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]] = None,
+    ) -> Optional[str]:
+        if self.command_mode:
+            return self.handle_command_mode_input(key, queue_payload)
+        if self.build_menu_open:
+            return None
+        if key == ord(":"):
+            self.command_mode = True
+            self.command_buffer = ""
+            self.vim_count = ""
+            self.vim_pending = ""
+            return "handled"
+        if key == ord("."):
+            if self.last_colon_command:
+                return self.execute_colon_command(self.last_colon_command, queue_payload, from_repeat=True)
+            self._log("No command to repeat.")
+            return "handled"
+        if key == 27:
+            self.vim_count = ""
+            self.vim_pending = ""
+            return None
+        if not 0 <= key < 256:
+            self.vim_count = ""
+            self.vim_pending = ""
+            return None
+
+        ch = chr(key)
+        if self.vim_pending == "g":
+            self.vim_pending = ""
+            if ch == "g":
+                self.jump_home()
+                return "handled"
+            self._log("Unknown g command.")
+            return "handled"
+        if self.vim_pending == "m":
+            self.vim_pending = ""
+            if ch.isalnum():
+                self.vim_marks[ch] = (self.cursor_x, self.cursor_y)
+                self._log(f"Marked {ch} at {self.cursor_x},{self.cursor_y}.")
+            return "handled"
+        if self.vim_pending == "'":
+            self.vim_pending = ""
+            mark = self.vim_marks.get(ch)
+            if mark:
+                self.cursor_x, self.cursor_y = mark
+                self.keep_cursor_visible()
+                self._log(f"Jumped to mark {ch}.")
+            else:
+                self._log(f"Mark {ch} is not set.")
+            return "handled"
+
+        if ch.isdigit() and (ch != "0" or self.vim_count):
+            self.vim_count += ch
+            return "handled"
+
+        count = int(self.vim_count) if self.vim_count else 1
+        self.vim_count = ""
+        if ch in ("h", "j", "k", "l"):
+            dx, dy = {"h": (-count, 0), "j": (0, count), "k": (0, -count), "l": (count, 0)}[ch]
+            self.move_cursor(dx, dy)
+            return "handled"
+        if ch == "g":
+            self.vim_pending = "g"
+            return "handled"
+        if ch == "G":
+            self.jump_to_alert_or_enemy()
+            return "handled"
+        if ch == "m":
+            self.vim_pending = "m"
+            return "handled"
+        if ch == "'":
+            self.vim_pending = "'"
+            return "handled"
+        if count > 1 and ch == "v":
+            self.queue_selected_production("villager", count, queue_payload)
+            return "handled"
+        if count > 1 and ch == "s":
+            self.queue_selected_production("military", count, queue_payload)
+            return "handled"
+        return None
+
+    def handle_command_mode_input(
+        self,
+        key: int,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> Optional[str]:
+        if key in (27,):
+            self.command_mode = False
+            self.command_buffer = ""
+            self._log("Command cancelled.")
+            return "handled"
+        if key in (10, 13, curses.KEY_ENTER):
+            text = self.command_buffer.strip()
+            self.command_mode = False
+            self.command_buffer = ""
+            if not text:
+                return "handled"
+            return self.execute_colon_command(text, queue_payload)
+        if key in (curses.KEY_BACKSPACE, 127, 8):
+            self.command_buffer = self.command_buffer[:-1]
+            return "handled"
+        if 0 <= key < 256:
+            ch = chr(key)
+            if ch.isprintable() and len(self.command_buffer) < 96:
+                self.command_buffer += ch
+            return "handled"
+        return "handled"
+
+    def execute_colon_command(
+        self,
+        text: str,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]] = None,
+        from_repeat: bool = False,
+    ) -> Optional[str]:
+        command = text.strip()
+        if not command:
+            return "handled"
+        lowered = command.lower()
+        if lowered in ("q", "quit", "leave"):
+            return "quit"
+        if lowered in ("help", "commands"):
+            self._log("Agent commands: select, gather, attack, queue, build, jump, mark.")
+            return "handled"
+        tokens = lowered.split()
+        if not tokens:
+            return "handled"
+        handled = False
+        if tokens[0] == "select":
+            handled = self.command_select(tokens[1:])
+        elif tokens[0] == "gather":
+            handled = self.command_gather(tokens[1:], queue_payload)
+        elif tokens[0] == "attack":
+            handled = self.command_attack(tokens[1:], queue_payload)
+        elif tokens[0] == "queue":
+            handled = self.command_queue(tokens[1:], queue_payload)
+        elif tokens[0] == "build":
+            handled = self.command_build(tokens[1:], queue_payload)
+        elif tokens[0] == "jump":
+            handled = self.command_jump(tokens[1:])
+        elif tokens[0] == "mark":
+            handled = self.command_mark(tokens[1:])
+        elif tokens[0] == "move":
+            handled = self.command_move(tokens[1:], queue_payload)
+        if handled:
+            if not from_repeat:
+                self.last_colon_command = command
+            return "handled"
+        self._log("Unknown command. Try :help.")
+        return "handled"
+
+    def emit_player_command(
+        self,
+        payload: Dict[str, object],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> None:
+        payload["owner"] = self.local_player_id
+        if queue_payload is not None:
+            queue_payload(payload)
+        else:
+            self.apply_command(payload)
+
+    def selected_owned_units(self) -> List[Unit]:
+        units: List[Unit] = []
+        seen: Set[int] = set()
+        for unit_id in self.selected_unit_ids:
+            unit = self.units.get(unit_id)
+            if unit and unit.owner == self.local_player_id and unit.id not in seen:
+                units.append(unit)
+                seen.add(unit.id)
+        selected = self.get_selected()
+        if isinstance(selected, Unit) and selected.owner == self.local_player_id and selected.id not in seen:
+            units.append(selected)
+        self.selected_unit_ids = [unit.id for unit in units if unit.hp > 0]
+        return [unit for unit in units if unit.hp > 0]
+
+    def set_selected_units(self, units: List[Unit]) -> bool:
+        owned = [unit for unit in units if unit.owner == self.local_player_id and unit.hp > 0]
+        if not owned:
+            self._log("No matching units found.")
+            return False
+        self.selected_unit_ids = [unit.id for unit in owned]
+        first = owned[0]
+        self.selected_kind = "unit"
+        self.selected_id = first.id
+        self.cursor_x = first.x
+        self.cursor_y = first.y
+        self.build_menu_open = False
+        self.keep_cursor_visible()
+        label = first.name if len(owned) == 1 else f"{len(owned)} units"
+        self._log(f"Selected {label}.")
+        return True
+
+    def command_count(self, tokens: List[str], default: int = 1) -> int:
+        for token in reversed(tokens):
+            if token.isdigit():
+                return max(1, min(50, int(token)))
+        return default
+
+    def owned_units_matching(self, tokens: List[str]) -> List[Unit]:
+        idle = "idle" in tokens
+        army = "army" in tokens or "military" in tokens
+        kind: Optional[str] = None
+        if any(token in tokens for token in ("villager", "villagers", "worker", "workers")):
+            kind = "villager"
+        elif "scout" in tokens:
+            kind = "scout"
+        elif any(token in tokens for token in ("clubman", "axeman", "swordsman")):
+            kind = next(token for token in tokens if token in ("clubman", "axeman", "swordsman"))
+        units = [unit for unit in self.units.values() if unit.owner == self.local_player_id and unit.hp > 0]
+        if army:
+            units = [unit for unit in units if unit.kind != "villager"]
+        if kind:
+            units = [unit for unit in units if unit.kind == kind]
+        if idle:
+            units = [unit for unit in units if unit.state == "idle"]
+        units.sort(key=lambda unit: (abs(unit.x - self.cursor_x) + abs(unit.y - self.cursor_y), unit.id))
+        return units
+
+    def owned_building_matching(self, tokens: List[str]) -> Optional[Building]:
+        aliases = {
+            "tc": "town_center",
+            "town_center": "town_center",
+            "town": "town_center",
+            "barracks": "barracks",
+            "mill": "mill",
+            "lumber": "lumber_camp",
+            "lumber_camp": "lumber_camp",
+            "house": "house",
+        }
+        kind = next((aliases[token] for token in tokens if token in aliases), None)
+        if not kind:
+            return None
+        buildings = [
+            building
+            for building in self.buildings.values()
+            if building.owner == self.local_player_id and building.kind == kind
+        ]
+        if not buildings:
+            return None
+        buildings.sort(key=lambda building: (abs(building.x - self.cursor_x) + abs(building.y - self.cursor_y), building.id))
+        return buildings[0]
+
+    def command_select(self, tokens: List[str]) -> bool:
+        building = self.owned_building_matching(tokens)
+        if building:
+            self.selected_kind = "building"
+            self.selected_id = building.id
+            self.selected_unit_ids = []
+            self.cursor_x = building.x
+            self.cursor_y = building.y
+            self.keep_cursor_visible()
+            self._log(f"Selected {building.name}.")
+            return True
+        units = self.owned_units_matching(tokens)
+        if not units:
+            return False
+        default_count = len(units) if any(token in tokens for token in ("all", "army", "military")) else 1
+        count = self.command_count(tokens, default_count)
+        return self.set_selected_units(units[:count])
+
+    def resource_kind_from_tokens(self, tokens: List[str]) -> Optional[str]:
+        if any(token in tokens for token in ("wood", "tree", "trees")):
+            return "tree"
+        if any(token in tokens for token in ("food", "berry", "berries")):
+            return "berries"
+        if any(token in tokens for token in ("gazelle", "hunt")):
+            return "gazelle"
+        if "gold" in tokens:
+            return "gold"
+        if "stone" in tokens:
+            return "stone"
+        return None
+
+    def group_origin(self, units: List[Unit]) -> Tuple[int, int]:
+        if not units:
+            return (self.cursor_x, self.cursor_y)
+        return (sum(unit.x for unit in units) // len(units), sum(unit.y for unit in units) // len(units))
+
+    def nearest_resource_node(self, kind: Optional[str], origin: Tuple[int, int]) -> Optional[Tuple[int, ResourceNode]]:
+        candidates: List[Tuple[int, ResourceNode]] = []
+        for rid, node in self.resources.items():
+            if kind and node.kind != kind:
+                continue
+            if node.amount <= 0 and node.kind != "gazelle":
+                continue
+            if node.kind == "gazelle" and not node.alive and not node.gatherable:
+                continue
+            pos = (node.x, node.y)
+            if pos not in self.current_player().visible and rid not in self.current_player().discovered_resources:
+                continue
+            candidates.append((rid, node))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (abs(item[1].x - origin[0]) + abs(item[1].y - origin[1]), item[0]))
+        return candidates[0]
+
+    def command_gather(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        units = [unit for unit in self.selected_owned_units() if unit.kind == "villager"]
+        if not units:
+            self._log("Select villagers before gathering.")
+            return True
+        resource = self.nearest_resource_node(self.resource_kind_from_tokens(tokens), self.group_origin(units))
+        if not resource:
+            self._log("No known matching resource.")
+            return True
+        _, node = resource
+        for unit in units:
+            self.emit_player_command({"kind": "context", "unit_id": unit.id, "x": node.x, "y": node.y}, queue_payload)
+        self._log(f"Sent {len(units)} villager(s) to {node.name}.")
+        return True
+
+    def nearest_visible_enemy(self, tokens: List[str], origin: Tuple[int, int]) -> Optional[Tuple[int, int, str]]:
+        want_building = "building" in tokens or "buildings" in tokens
+        want_tc = "tc" in tokens or "town_center" in tokens
+        want_villager = any(token in tokens for token in ("villager", "villagers", "worker", "workers", "enemy_villager"))
+        options: List[Tuple[int, int, str, int]] = []
+        if not want_building and not want_tc:
+            for unit in self.units.values():
+                if unit.owner == self.local_player_id or unit.hp <= 0:
+                    continue
+                if not self.tile_visible_to(self.local_player_id, unit.x, unit.y):
+                    continue
+                if want_villager and unit.kind != "villager":
+                    continue
+                priority = 0 if unit.kind == "villager" else 1
+                options.append((unit.x, unit.y, unit.name, priority))
+        if not want_villager:
+            for building in self.buildings.values():
+                if building.owner == self.local_player_id or not self.tile_visible_to(self.local_player_id, building.x, building.y):
+                    continue
+                if want_tc and building.kind != "town_center":
+                    continue
+                priority = 0 if not building.complete else 2
+                options.append((building.x, building.y, building.name, priority))
+        if not options:
+            return None
+        options.sort(key=lambda item: (item[3], abs(item[0] - origin[0]) + abs(item[1] - origin[1]), item[2]))
+        x, y, name, _ = options[0]
+        return (x, y, name)
+
+    def command_attack(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        units = self.owned_units_matching(["army"]) if "army" in tokens or "military" in tokens else self.selected_owned_units()
+        units = [unit for unit in units if unit.kind != "villager" or "villager" in tokens]
+        if not units:
+            self._log("No selected attackers.")
+            return True
+        target = self.nearest_visible_enemy(tokens, self.group_origin(units))
+        if not target:
+            self._log("No visible matching enemy.")
+            return True
+        x, y, name = target
+        for unit in units:
+            self.emit_player_command({"kind": "context", "unit_id": unit.id, "x": x, "y": y}, queue_payload)
+        self._log(f"Sent {len(units)} unit(s) to attack {name}.")
+        return True
+
+    def command_move(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        units = self.selected_owned_units()
+        if not units:
+            self._log("No selected units to move.")
+            return True
+        for unit in units:
+            self.emit_player_command({"kind": "context", "unit_id": unit.id, "x": self.cursor_x, "y": self.cursor_y}, queue_payload)
+        self._log(f"Moved {len(units)} unit(s) to cursor.")
+        return True
+
+    def command_queue(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        count = self.command_count(tokens)
+        if any(token in tokens for token in ("villager", "villagers", "worker", "workers")):
+            building = self.owned_building_matching(tokens) or self.owned_building_matching(["tc"])
+            if not building:
+                self._log("No Town Center found.")
+                return True
+            for _ in range(count):
+                self.emit_player_command({"kind": "queue_villager", "building_id": building.id}, queue_payload)
+            self._log(f"Submitted villager queue x{count}.")
+            return True
+        if any(token in tokens for token in ("soldier", "soldiers", "military", "unit", "units")):
+            building = self.owned_building_matching(tokens) or self.owned_building_matching(["barracks"])
+            if not building:
+                self._log("No Barracks found.")
+                return True
+            for _ in range(count):
+                self.emit_player_command({"kind": "queue_military", "building_id": building.id}, queue_payload)
+            self._log(f"Submitted military queue x{count}.")
+            return True
+        return False
+
+    def building_kind_from_tokens(self, tokens: List[str]) -> Optional[str]:
+        aliases = {
+            "house": "house",
+            "h": "house",
+            "lumber": "lumber_camp",
+            "lumber_camp": "lumber_camp",
+            "camp": "lumber_camp",
+            "mill": "mill",
+            "barracks": "barracks",
+            "rax": "barracks",
+        }
+        return next((aliases[token] for token in tokens if token in aliases), None)
+
+    def command_build(
+        self,
+        tokens: List[str],
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> bool:
+        kind = self.building_kind_from_tokens(tokens)
+        if not kind:
+            return False
+        villagers = [unit for unit in self.selected_owned_units() if unit.kind == "villager"]
+        if not villagers:
+            villagers = self.owned_units_matching(["idle", "villager"])[:1] or self.owned_units_matching(["villager"])[:1]
+        if not villagers:
+            self._log("No villager available to build.")
+            return True
+        x, y = self.cursor_x, self.cursor_y
+        if "near" in tokens:
+            anchor = self.owned_building_matching(tokens[tokens.index("near") + 1 :]) if tokens.index("near") + 1 < len(tokens) else None
+            near_x, near_y = (anchor.x, anchor.y) if anchor else (self.cursor_x, self.cursor_y)
+            site = self.find_build_site(near_x, near_y)
+            if not site:
+                self._log("No nearby build site found.")
+                return True
+            x, y = site
+        self.emit_player_command({"kind": "build", "unit_id": villagers[0].id, "building_kind": kind, "x": x, "y": y}, queue_payload)
+        self._log(f"Submitted {BUILDING_STATS[kind]['name']} build at {x},{y}.")
+        return True
+
+    def command_jump(self, tokens: List[str]) -> bool:
+        if not tokens:
+            return False
+        if tokens[0] in self.vim_marks:
+            self.cursor_x, self.cursor_y = self.vim_marks[tokens[0]]
+            self.keep_cursor_visible()
+            self._log(f"Jumped to mark {tokens[0]}.")
+            return True
+        if tokens[0] in ("tc", "town_center", "home"):
+            self.jump_home()
+            return True
+        if tokens[0] in ("alert", "enemy"):
+            self.jump_to_alert_or_enemy()
+            return True
+        building = self.owned_building_matching(tokens)
+        if building:
+            self.cursor_x, self.cursor_y = building.x, building.y
+            self.keep_cursor_visible()
+            self._log(f"Jumped to {building.name}.")
+            return True
+        return False
+
+    def command_mark(self, tokens: List[str]) -> bool:
+        if not tokens or len(tokens[0]) != 1 or not tokens[0].isalnum():
+            self._log("Use :mark <letter>.")
+            return True
+        self.vim_marks[tokens[0]] = (self.cursor_x, self.cursor_y)
+        self._log(f"Marked {tokens[0]} at {self.cursor_x},{self.cursor_y}.")
+        return True
+
+    def queue_selected_production(
+        self,
+        kind: str,
+        count: int,
+        queue_payload: Optional[Callable[[Dict[str, object]], None]],
+    ) -> None:
+        selected = self.get_selected()
+        if not isinstance(selected, Building) or selected.owner != self.local_player_id:
+            self._log("Select a production building first.")
+            return
+        payload_kind = "queue_villager" if kind == "villager" else "queue_military"
+        for _ in range(count):
+            self.emit_player_command({"kind": payload_kind, "building_id": selected.id}, queue_payload)
+        self._log(f"Submitted {kind} queue x{count}.")
+
+    def jump_home(self) -> None:
+        town_center = self.owned_building_matching(["tc"])
+        if not town_center:
+            self._log("No Town Center found.")
+            return
+        self.cursor_x, self.cursor_y = town_center.x, town_center.y
+        self.keep_cursor_visible()
+        self._log("Jumped home.")
+
+    def jump_to_alert_or_enemy(self) -> None:
+        target = self.nearest_visible_enemy([], (self.cursor_x, self.cursor_y))
+        if not target:
+            self._log("No visible enemy alert.")
+            return
+        self.cursor_x, self.cursor_y = target[0], target[1]
+        self.keep_cursor_visible()
+        self._log(f"Jumped to {target[2]}.")
 
     def handle_build_menu_input(self, key: int) -> None:
         if key == ord("q"):
@@ -1280,6 +1804,7 @@ class Game:
         if unit and (unit.owner == self.local_player_id or pos in visible):
             self.selected_kind = "unit"
             self.selected_id = unit.id
+            self.selected_unit_ids = [unit.id] if unit.owner == self.local_player_id else []
             self.build_menu_open = False
             self._log(f"Selected {unit.name}.")
             return
@@ -1287,6 +1812,7 @@ class Game:
         if building and (building.owner == self.local_player_id or pos in visible):
             self.selected_kind = "building"
             self.selected_id = building.id
+            self.selected_unit_ids = []
             self.build_menu_open = False
             self._log(f"Selected {building.name}.")
             return
@@ -1297,10 +1823,12 @@ class Game:
             rid, node = resource
             self.selected_kind = "resource"
             self.selected_id = rid
+            self.selected_unit_ids = []
             self.build_menu_open = False
             self._log(f"Selected {node.name}.")
             return
         self.build_menu_open = False
+        self.selected_unit_ids = []
         self._log("Nothing here to select.")
 
     def cycle_selection(self) -> None:
@@ -1325,6 +1853,10 @@ class Game:
             self.build_menu_open = False
             self.cursor_x = entity.x
             self.cursor_y = entity.y
+            if isinstance(entity, Unit) and entity.owner == self.local_player_id:
+                self.selected_unit_ids = [entity.id]
+            else:
+                self.selected_unit_ids = []
 
     def get_selected(self) -> Optional[object]:
         if self.selected_id is None:
@@ -1707,6 +2239,7 @@ class Game:
         for unit in ordered:
             if unit.attack_cooldown > 0:
                 unit.attack_cooldown -= 1
+            self.auto_acquire_visible_enemy(unit)
             if unit.state == "move":
                 self.step_toward_destination(unit)
             elif unit.state in ("gather", "hunt"):
@@ -1717,6 +2250,39 @@ class Game:
                 self.update_builder(unit)
             elif unit.state == "attack":
                 self.update_attack(unit)
+
+    def auto_acquire_visible_enemy(self, unit: Unit) -> None:
+        if unit.kind == "villager" or unit.state == "attack" or unit.hp <= 0:
+            return
+        target = self.closest_visible_enemy_unit(unit)
+        if not target:
+            return
+        unit.state = "attack"
+        unit.target = ("unit", target.id)
+        unit.destination = None
+        unit.build_target = None
+        unit.gather_progress = 0.0
+
+    def closest_visible_enemy_unit(self, unit: Unit) -> Optional[Unit]:
+        enemies = [
+            enemy
+            for enemy in self.units.values()
+            if enemy.owner != unit.owner
+            and enemy.hp > 0
+            and self.distance(unit.x, unit.y, enemy.x, enemy.y) <= unit.vision
+            and self.tile_visible_to(unit.owner, enemy.x, enemy.y)
+        ]
+        if not enemies:
+            return None
+        enemies.sort(
+            key=lambda enemy: (
+                self.distance(unit.x, unit.y, enemy.x, enemy.y),
+                0 if enemy.kind == "villager" else 1,
+                enemy.hp,
+                enemy.id,
+            )
+        )
+        return enemies[0]
 
     def step_toward_destination(self, unit: Unit) -> None:
         if not unit.destination:
@@ -1849,6 +2415,7 @@ class Game:
         damage = unit.attack + self.players[unit.owner].military_level
         target_obj.hp -= damage
         self.mark_damage(target_kind, target_id)
+        self.handle_combat_damage(unit, target_kind, target_obj)
         if target_kind == "resource" and target_obj.hp <= 0:
             target_obj.alive = False
             target_obj.gatherable = False
@@ -1857,6 +2424,58 @@ class Game:
             self._log(f"{self.players[unit.owner].name}'s {unit.name} killed a gazelle.", player_id=unit.owner)
             return
         unit.attack_cooldown = 10
+
+    def handle_combat_damage(self, attacker: Unit, target_kind: str, target_obj: object) -> None:
+        if target_kind not in ("unit", "building") or not isinstance(target_obj, (Unit, Building)):
+            return
+        defender_owner = target_obj.owner
+        if defender_owner == attacker.owner or not self.is_ai_owner(defender_owner):
+            return
+        self.ai_respond_to_attack(defender_owner, attacker, target_obj)
+
+    def is_ai_owner(self, owner: int) -> bool:
+        return self.enable_ai and owner != self.local_player_id
+
+    def ai_order_attack_unit(self, unit: Unit, target: Unit) -> None:
+        unit.state = "attack"
+        unit.target = ("unit", target.id)
+        unit.destination = None
+        unit.build_target = None
+        unit.gather_progress = 0.0
+
+    def ai_respond_to_attack(self, owner: int, attacker: Unit, target_obj: object) -> None:
+        if attacker.hp <= 0:
+            return
+        if isinstance(target_obj, Unit) and target_obj.owner == owner and target_obj.hp > 0:
+            self.ai_order_attack_unit(target_obj, attacker)
+
+        tx = target_obj.x if isinstance(target_obj, (Unit, Building)) else attacker.x
+        ty = target_obj.y if isinstance(target_obj, (Unit, Building)) else attacker.y
+        military: List[Unit] = []
+        workers: List[Unit] = []
+        for defender in self.units.values():
+            if defender.owner != owner or defender.id == attacker.id or defender.hp <= 0:
+                continue
+            if isinstance(target_obj, Unit) and defender.id == target_obj.id:
+                continue
+            target_distance = self.distance(defender.x, defender.y, tx, ty)
+            attacker_distance = self.distance(defender.x, defender.y, attacker.x, attacker.y)
+            if defender.kind == "villager":
+                if min(target_distance, attacker_distance) <= 7:
+                    workers.append(defender)
+            elif min(target_distance, attacker_distance) <= 13:
+                military.append(defender)
+
+        military.sort(key=lambda unit: self.distance(unit.x, unit.y, attacker.x, attacker.y))
+        workers.sort(key=lambda unit: self.distance(unit.x, unit.y, attacker.x, attacker.y))
+        responders = military[:5] + workers[:4]
+        for defender in responders:
+            self.ai_order_attack_unit(defender, attacker)
+
+        key = f"last_defense_log_{owner}"
+        if responders and self.tick - self.ai_memory.get(key, -999) > 30:
+            self.ai_memory[key] = self.tick
+            self._log(f"{self.players[owner].name} calls nearby units to defend.", player_id=owner)
 
     def move_unit_toward(self, unit: Unit, destination: Tuple[int, int], adjacent: bool = False) -> None:
         tx, ty = destination
@@ -2034,12 +2653,119 @@ class Game:
                         worker.target = ("resource", rid)
                         worker.state = "hunt" if target.kind == "gazelle" and target.alive else "gather"
         army = [unit for unit in self.units.values() if unit.owner == 1 and unit.kind != "villager"]
-        target_tc = next((b for b in self.buildings.values() if b.owner == 0 and b.kind == "town_center"), None)
-        if army and target_tc and (len(army) >= 4 or self.tick - self.ai_memory["last_attack_tick"] > 170):
-            self.ai_memory["last_attack_tick"] = self.tick
-            for soldier in army:
-                soldier.state = "attack"
-                soldier.target = ("building", target_tc.id)
+        target = self.ai_choose_attack_target(1, army)
+        if target and army and self.tick - self.ai_memory["last_attack_tick"] > 32:
+            attackers = self.ai_attackers_for_target(army, target)
+            if attackers:
+                self.ai_memory["last_attack_tick"] = self.tick
+                for soldier in attackers:
+                    soldier.state = "attack"
+                    soldier.target = target
+                    soldier.destination = None
+        self.ai_scout_with_idle_units(1, army, tc)
+
+    def ai_choose_attack_target(self, owner: int, army: List[Unit]) -> Optional[Tuple[str, int]]:
+        visible_enemy_units = [
+            unit
+            for unit in self.units.values()
+            if unit.owner != owner and self.tile_visible_to(owner, unit.x, unit.y)
+        ]
+        if visible_enemy_units:
+            visible_enemy_units.sort(
+                key=lambda unit: (
+                    0 if unit.kind == "villager" else 1,
+                    unit.hp,
+                    self.ai_army_distance(army, unit.x, unit.y),
+                )
+            )
+            return ("unit", visible_enemy_units[0].id)
+
+        visible_enemy_buildings = [
+            building
+            for building in self.buildings.values()
+            if building.owner != owner and self.tile_visible_to(owner, building.x, building.y)
+        ]
+        if not visible_enemy_buildings:
+            return None
+
+        ready_for_base_push = len(army) >= 4
+        building_targets = [
+            building
+            for building in visible_enemy_buildings
+            if building.kind != "town_center" or ready_for_base_push
+        ]
+        if not building_targets:
+            return None
+
+        building_targets.sort(
+            key=lambda building: (
+                0 if not building.complete else 1,
+                1 if building.kind in ("mill", "lumber_camp", "barracks") else 2,
+                building.hp,
+                self.ai_army_distance(army, building.x, building.y),
+            )
+        )
+        return ("building", building_targets[0].id)
+
+    def ai_attackers_for_target(self, army: List[Unit], target: Tuple[str, int]) -> List[Unit]:
+        if target[0] == "building":
+            building = self.buildings.get(target[1])
+            if not building:
+                return []
+            if building.kind == "town_center" and len(army) < 4:
+                return []
+            if building.kind != "town_center" and len(army) == 1 and army[0].kind == "scout":
+                return []
+        if target[0] == "unit":
+            unit = self.units.get(target[1])
+            if not unit:
+                return []
+            if unit.kind != "villager" and len(army) < 2:
+                return []
+        return [
+            unit
+            for unit in army
+            if unit.state != "attack" or unit.target != target
+        ]
+
+    def ai_army_distance(self, army: List[Unit], x: int, y: int) -> int:
+        if not army:
+            return MAP_WIDTH + MAP_HEIGHT
+        return min(abs(unit.x - x) + abs(unit.y - y) for unit in army)
+
+    def ai_scout_with_idle_units(self, owner: int, army: List[Unit], tc: Optional[Building]) -> None:
+        if self.tick - self.ai_memory.get("last_scout_tick", -999) < 36:
+            return
+        scouts = [unit for unit in army if unit.kind == "scout" and unit.state in ("idle", "move")]
+        if not scouts:
+            return
+        waypoints = self.ai_scout_waypoints(owner, tc)
+        if not waypoints:
+            return
+        self.ai_memory["last_scout_tick"] = self.tick
+        for scout in scouts:
+            if scout.destination and self.distance(scout.x, scout.y, scout.destination[0], scout.destination[1]) > 2:
+                continue
+            target_x, target_y = self.rng.choice(waypoints)
+            scout.state = "move"
+            scout.destination = (target_x, target_y)
+            scout.target = None
+
+    def ai_scout_waypoints(self, owner: int, tc: Optional[Building]) -> List[Tuple[int, int]]:
+        waypoints: List[Tuple[int, int]] = []
+        if tc:
+            for node in self.resources.values():
+                if 7 <= abs(node.x - tc.x) + abs(node.y - tc.y) <= 28:
+                    waypoints.append((node.x, node.y))
+        for enemy_tc in self.buildings.values():
+            if enemy_tc.owner != owner and enemy_tc.kind == "town_center":
+                for dx, dy in [(-7, -4), (-5, 6), (6, -5), (7, 4)]:
+                    x = max(1, min(MAP_WIDTH - 2, enemy_tc.x + dx))
+                    y = max(1, min(MAP_HEIGHT - 2, enemy_tc.y + dy))
+                    if self.tile_open(x, y):
+                        waypoints.append((x, y))
+        waypoints.extend([(8, 8), (MAP_WIDTH - 9, 8), (8, MAP_HEIGHT - 9), (MAP_WIDTH - 9, MAP_HEIGHT - 9)])
+        return waypoints
 
     def idle_worker(self, owner: int) -> Optional[Unit]:
         workers = [unit for unit in self.units.values() if unit.owner == owner and unit.kind == "villager" and unit.state in ("idle", "gather", "hunt", "return")]
@@ -2301,9 +3027,18 @@ class Game:
 
         selected = self.get_selected()
         add_header("Selection")
+        selected_group = self.selected_owned_units()
+        if len(selected_group) > 1:
+            add_line(f"Group {len(selected_group)} units", self.theme_attr(PAIR_PROMPT))
         for line in self.selected_panel_lines(selected, width):
             if not add_line(line):
                 break
+
+        if self.command_mode or self.vim_count or self.vim_pending:
+            add_header("Input")
+            prefix = ":" if self.command_mode else ""
+            pending = self.command_buffer if self.command_mode else f"{self.vim_count}{self.vim_pending}"
+            add_line((prefix + pending)[: max(1, width - 2)], self.theme_attr(PAIR_PROMPT))
 
         if self.build_menu_open:
             add_header("Build")
@@ -2318,7 +3053,8 @@ class Game:
 
         add_header("Commands")
         command_lines = [
-            "Arrows move · Shift fast",
+            "hjkl/count · gg home",
+            ": agent command mode",
             "Space select · a act",
             "b build · v villager",
             "s soldier · n age · t tech",
@@ -3280,6 +4016,7 @@ class SSHOfEmpiresApp:
         if game.selected_id is not None and game.get_selected() is None:
             game.selected_kind = None
             game.selected_id = None
+            game.selected_unit_ids = []
             game.build_menu_open = False
         game.keep_cursor_visible()
         return game
@@ -3304,6 +4041,15 @@ class SSHOfEmpiresApp:
             if key == -1:
                 continue
             key = normalize_input_key(self.stdscr, key, TICK_MS)
+            def queue_payload(payload: Dict[str, object]) -> None:
+                self.queue_match_command(room_id, player_id, payload)
+
+            vim_result = game.handle_vim_input(key, queue_payload)
+            if vim_result == "quit":
+                self.store.leave_room(player_id)
+                return
+            if vim_result == "handled":
+                continue
             if game.build_menu_open:
                 if key == ord("q"):
                     self.store.leave_room(player_id)
@@ -3341,6 +4087,7 @@ class SSHOfEmpiresApp:
             elif key in (ord("x"), 27):
                 game.selected_kind = None
                 game.selected_id = None
+                game.selected_unit_ids = []
                 game.build_menu_open = False
             elif key in (ord("a"), curses.ascii.NUL):
                 selected = game.get_selected()

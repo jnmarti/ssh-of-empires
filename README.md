@@ -102,6 +102,14 @@ Resource colors are separate from player colors so units stand out from the envi
 
 ### Global Controls
 
+- `h` / `j` / `k` / `l`: move the cursor left / down / up / right
+- Numeric prefixes repeat Vim movement, for example `12l` moves twelve tiles right
+- `gg`: jump to your Town Center
+- `G`: jump to the nearest visible enemy target
+- `m<letter>`: mark the current cursor tile
+- `'<letter>`: jump to a marked tile
+- `:`: open explicit command mode
+- `.`: repeat the last successful explicit command
 - `Arrow keys`: move the cursor
 - `Shift + Arrow keys`: move the cursor faster
 - `Ctrl-B` / `Ctrl-F` / `Ctrl-P` / `Ctrl-N`: fallback cursor movement for left / right / up / down
@@ -123,6 +131,29 @@ Examples:
 - Select a villager, point at a berry bush, press `a`: gather food
 - Select a soldier, point at an enemy, press `a`: attack
 - Select a unit, point at empty ground, press `a`: move
+
+### Agent-Safe Command Mode
+
+Press `:`, type one command, then press `Enter`.
+
+Examples:
+
+- `:select idle villager 3`
+- `:select army`
+- `:select town_center`
+- `:gather selected nearest berries`
+- `:gather selected nearest wood`
+- `:attack army nearest enemy_villager`
+- `:move selected cursor`
+- `:queue town_center villager 5`
+- `:queue barracks military 3`
+- `:build house near town_center`
+- `:build mill near cursor`
+- `:jump enemy`
+- `:mark a`
+- `:jump a`
+
+The command mode is intended for agents and power users who want semantic commands instead of long cursor-only input sequences. Multi-unit semantic selection is supported for owned units; production buildings and building placement still resolve to one producer or builder at a time.
 
 ### Production and Research
 
